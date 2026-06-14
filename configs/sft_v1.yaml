@@ -13,7 +13,8 @@ data:
 training:
   output_dir: outputs/sft_v1
   run_name: qwen25_15b_lora_sft_v1
-  max_seq_length: 512
+  max_length: 512
+  eos_token: "<|im_end|>"
   learning_rate: 0.0001
   num_train_epochs: 3
   per_device_train_batch_size: 1

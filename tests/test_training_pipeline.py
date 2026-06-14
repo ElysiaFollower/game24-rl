@@ -28,6 +28,8 @@ def test_load_sft_config_includes_resume_safe_defaults() -> None:
 
     assert config.model_name == "Qwen/Qwen2.5-1.5B-Instruct"
     assert config.data.split_seed == 20260613
+    assert config.training.max_length == 512
+    assert config.training.eos_token == "<|im_end|>"
     assert config.training.save_steps == 50
     assert config.training.output_dir == "outputs/sft_v1"
 
@@ -153,6 +155,8 @@ def _write_test_config(tmp_path: Path) -> Path:
         "training": {
             "output_dir": str(output_dir),
             "run_name": "unit-test",
+            "max_length": 128,
+            "eos_token": "<|im_end|>",
             "save_steps": 7,
         },
         "evaluation": {

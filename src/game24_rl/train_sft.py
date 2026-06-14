@@ -43,7 +43,8 @@ class SftTrainingConfig:
 
     output_dir: str = "outputs/sft_v1"
     run_name: str = "sft_v1"
-    max_seq_length: int = 512
+    max_length: int = 512
+    eos_token: str | None = "<|im_end|>"
     learning_rate: float = 1e-4
     num_train_epochs: float = 3
     per_device_train_batch_size: int = 1
@@ -280,10 +281,6 @@ def _run_real_sft(
 
     run_dir = Path(config.training.output_dir) / config.training.run_name
     dataset = load_dataset("json", data_files=str(train_jsonl_path), split="train")
-    dataset = dataset.map(
-        lambda record: {"text": f"{record['prompt']}\n{record['completion']}"},
-        remove_columns=dataset.column_names,
-    )
 
     tokenizer = AutoTokenizer.from_pretrained(config.model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
@@ -304,7 +301,7 @@ def _run_real_sft(
     training_args = SFTConfig(
         output_dir=str(run_dir),
         run_name=config.training.run_name,
-        max_seq_length=config.training.max_seq_length,
+        max_length=config.training.max_length,
         learning_rate=config.training.learning_rate,
         num_train_epochs=config.training.num_train_epochs,
         per_device_train_batch_size=config.training.per_device_train_batch_size,
@@ -316,7 +313,8 @@ def _run_real_sft(
         seed=config.training.seed,
         bf16=config.training.bf16,
         report_to=config.training.report_to,
-        dataset_text_field="text",
+        eos_token=config.training.eos_token,
+        completion_only_loss=True,
     )
     trainer = SFTTrainer(
         model=model,
