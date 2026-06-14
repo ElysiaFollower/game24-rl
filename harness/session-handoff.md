@@ -8,9 +8,9 @@
 ## 仓库状态
 
 - 分支：`main`
-- 提交：尚无项目提交；当前是新仓库初始 scaffold 加本次 M1/M2 实现。
-- Git remote：当前本地 `git remote -v` 为空；远程训练前需要 public repository URL 和已推送代码。
-- 脏文件：整个初始仓库尚未提交；新增/修改覆盖 `src/`、`scripts/`、`tests/`、`configs/sft_v1.yaml`、`pyproject.toml`、`environment*.yml`、`docs/architecture/remote-training-operations.md`、`plans/`、`harness/` 等。
+- 提交：`8c2091f`，已推送到 public GitHub。
+- Git remote：`origin` 指向 `git@github.com:ElysiaFollower/game24-rl.git`；public URL 为 `https://github.com/ElysiaFollower/game24-rl`。
+- 脏文件：当前本地只有本 handoff/progress 文档更新待提交；代码修复已提交推送。
 - Ignored 运行产物：`data/processed/`、`outputs/` 保留为本次 dry-run evidence；`.pytest_cache`、`.ruff_cache` 和 `__pycache__` 已清理。
 - 当前计划：`plans/active/0002-sft-training-readiness.md`
 - 当前功能项：`M2-first-pass-sft`
@@ -51,13 +51,13 @@
   - `2026-06-14 16:30 CST` 只读核对：GPU utilization 0%，未发现 runner 用户下的 training/eval 进程；根分区约 25G 可用。
 - AutoDL4090：
   - SSH 和 Remote Runner 均可达；用户 `root`，工作目录 `/root/autodl-tmp/projects`。
-  - 已安装 `tmux 3.2a`、`git`、`curl`、`gh 2.4.0`；`gh auth status` 显示尚未登录。
+  - 已安装 `tmux 3.2a`、`git`、`curl`、`gh 2.4.0`；仓库是 public，正式 clone 使用 HTTPS，不依赖远端 gh 登录。
   - 硬件为 NVIDIA GeForce RTX 4090，显存约 49GB；`/root/autodl-tmp` 约 750GB 可用。
   - 复用 `/root/miniconda3` base 环境；`torch 2.8.0+cu128` 可用，CUDA available true。
   - 已安装训练依赖：`transformers 5.12.0`、`peft 0.19.1`、`trl 1.6.0`、`datasets 5.0.0`、`accelerate 1.14.0`、`pytest 9.1.0`、`ruff 0.15.17`。
-  - 临时 tarball 源码位于 `/root/autodl-tmp/projects/game24-rl-work`，仅用于环境验证，不作为可报告训练来源。
+  - 正式 clone 位于 `/root/autodl-tmp/projects/game24-rl`，当前 commit `8c2091f`；旧 tarball 副本 `/root/autodl-tmp/projects/game24-rl-work` 只作为历史环境验证残留，不再使用。
   - 远端验证通过：`python -m compileall src scripts`、`pytest` 31 tests、`ruff check .`、`ruff format --check .`、`python scripts/train_sft.py --config configs/sft_v1.yaml --dry-run`、`python scripts/eval_checkpoint.py --manifest data/processed/splits/standard-game24-v1.json --solver-dry-run --output-dir outputs/eval/sft_v1_dryrun --split validation --limit 16`。
-  - TRL API probe：`SFTConfig` 存在，但当前 `trl 1.6.0` 的 `SFTConfig` 参数中没有 `max_seq_length`；真实 SFT 前需要最小训练/API smoke 或固定兼容依赖。
+  - TRL API probe：当前代码已改用 `SFTConfig(max_length=512, eos_token="<|im_end|>", completion_only_loss=True)`；在 AutoDL 的 `trl 1.6.0` 中构造 smoke 通过。
 
 ## 本会话改动
 
@@ -93,13 +93,12 @@
 - 真实训练和真实 checkpoint evaluation 的重依赖导入推迟到对应函数内部，避免本地 M1/M2 单元测试依赖 CUDA 或模型下载。
 - 当前协作模式改为强人类把关；训练、评测、依赖固定、仓库发布和 GRPO 入口都先给负责人确认。
 - AutoDL4090 上因 Remote Runner session 状态偶发 busy 残留，允许使用负责人明确授权的 `ssh AutoDL4090` 做短命令和环境管理；真实长训仍应放在远端 tmux session 中，保留日志和 checkpoint。
+- TRL 是 Hugging Face 后训练库，本项目用它的 `SFTTrainer` 做 M2 SFT，并计划用 `GRPOTrainer` 做 M3 GRPO；依赖已按当前 AutoDL 验证版本线固定为 `trl>=1.6,<2`、`transformers>=5.12,<6` 等 train extras。
+- SFT 数据交给 TRL 按 prompt/completion 格式处理，并显式 `completion_only_loss=True`，避免把 prompt 纳入 loss。
 
 ## 仍损坏或未验证
 
-- 尚未在 AutoDL4090 上通过 `gh auth login`；`gh` 已安装但未登录。
-- 尚未从 public repo clone 正式代码；当前 AutoDL4090 的 `/root/autodl-tmp/projects/game24-rl-work` 是 tarball 临时副本，不能作为可报告训练来源。
-- 当前本地仓库没有 git remote，远程机器无法从 public repo 拉到这次代码，直到仓库被推送或提供 public repo URL。
-- AutoDL4090 训练依赖已装在 base conda 中，但真实 `SFTTrainer` 训练路径未跑；`trl 1.6.0` 可能与当前脚本中的 `max_seq_length` 参数不兼容。
+- AutoDL4090 训练依赖已装在 base conda 中，但真实 `SFTTrainer` 训练路径还没跑到模型加载和 optimizer step；当前只验证了 dry-run 和 `SFTConfig` 构造。
 - 尚未下载 `Qwen/Qwen2.5-1.5B-Instruct` 权重，尚未验证 Hugging Face 模型下载速度和缓存路径。
 - 尚未做最小真实训练保存/resume/eval 闭环；不得直接开始长训。
 - 尚未在 RTXpro6000 上 clone public repo、安装依赖或启动真实 LoRA SFT。
@@ -107,7 +106,7 @@
 - Miniconda 基座已经补上，但完整训练依赖还没装；train profile 需要再跑一次 bootstrap 或切到预置环境。
 - RTXpro6000 根分区只剩约 25G 可用，继续安装完整训练依赖和模型缓存有较高空间风险。
 - 远程缺 `ruff`；远程 readiness 现在会跳过 ruff，但本地 ruff 仍是完成门禁。
-- 真实 TRL `SFTConfig`/`SFTTrainer` API 未在远程训练环境验证；本地只验证了 lazy-import 外围逻辑和 artifact schema。
+- `SFTConfig` 构造已在 AutoDL 验证；`SFTTrainer` 真实模型训练仍未验证。
 - `scripts/bootstrap_conda_env.sh train` 尚未实际创建完整训练环境；本地已验证 `.[dev]` editable install，重依赖仍需在远程或训练机上验证。
 - 训练产物、checkpoint、模型生成输出还没有真实分数；M2 仍为 `active`，不是 `passing`。
 - `data/processed/` 和 `outputs/` 是 ignored dry-run evidence，不应提交。
@@ -125,11 +124,9 @@
 
 ## 下一步最佳动作
 
-1. 负责人在 AutoDL4090 上执行 `gh auth login`，或提供可直接 clone 的 public repo URL。
-2. 设置 public git remote 并推送当前代码；用正式 clone 替换 `/root/autodl-tmp/projects/game24-rl-work` 的临时 tarball 副本。
-3. 在正式 clone 中复跑 `./init.sh`、compileall、pytest、ruff、SFT dry-run、eval dry-run。
-4. 在负责人确认后，做最小真实模型/API smoke：加载 `Qwen/Qwen2.5-1.5B-Instruct` 和 tokenizer，确认 `SFTConfig/SFTTrainer` 参数兼容，跑极小训练步保存 checkpoint，不做长训。
-5. smoke 通过后再由负责人确认是否启动完整 LoRA SFT；真实训练放入 tmux，使用 `--auto-resume`，保存日志和 checkpoint。
+1. 负责人确认后，在 AutoDL4090 正式 clone `/root/autodl-tmp/projects/game24-rl` 做最小真实模型/API smoke：加载 `Qwen/Qwen2.5-1.5B-Instruct` 和 tokenizer，跑极小 SFT optimizer step 并保存 checkpoint，不做长训。
+2. smoke 通过后，用 `scripts/eval_checkpoint.py` 对小 checkpoint 做 limited eval，确认 adapter load、generation、raw output 和 strict verifier report 完整。
+3. 再由负责人确认是否启动完整 LoRA SFT；真实训练放入 tmux，使用 `--auto-resume`，保存日志和 checkpoint。
 
 ## 命令
 
@@ -144,5 +141,5 @@
 - Remote runner health：`conda run -n seedrunner remote-runner machine doctor rtxpro6000 --json`
 - AutoDL SSH：`ssh AutoDL4090`
 - AutoDL env：`source /root/miniconda3/etc/profile.d/conda.sh && conda activate base`
-- AutoDL临时副本：`cd /root/autodl-tmp/projects/game24-rl-work`
+- AutoDL正式 clone：`cd /root/autodl-tmp/projects/game24-rl`
 - Remote readiness fallback：`REMOTE_INSTALL_MODE=system-user REMOTE_SKIP_INSTALL=1 ./scripts/remote_readiness.sh`

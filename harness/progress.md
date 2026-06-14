@@ -9,8 +9,8 @@
 
 - 当前功能项：`M2-first-pass-sft`
 - 当前任务计划：`plans/active/0002-sft-training-readiness.md`
-- 上次验证：本地 `python -m pip install --no-build-isolation -e '.[dev]'`、`./scripts/harness-check.sh`、`python -m compileall src scripts`、`pytest`、`ruff check . && ruff format --check .` 均通过；远程 system-package 路径下 `./init.sh`、compileall、pytest 31 tests、SFT dry-run 和 eval dry-run 通过；Miniconda 已在 RTXpro6000 的 `/home/runner/miniconda3` 安装完成
-- 下一步最佳动作：如果继续在 RTXpro6000 上推进，直接用 `./scripts/bootstrap_conda_env.sh train` 补齐训练依赖并从 public clone 启动可续跑 LoRA SFT；如果要减少 RTX 占用，转去 AutoDL 做长训
+- 上次验证：本地 `./scripts/harness-check.sh`、`python -m compileall src scripts`、`pytest`、`ruff check . && ruff format --check .` 均通过；AutoDL4090 正式 clone 上 `./init.sh`、compileall、pytest 31 tests、ruff、SFT dry-run、eval dry-run 和 TRL `SFTConfig(max_length, completion_only_loss)` smoke 均通过
+- 下一步最佳动作：在负责人确认后，在 AutoDL4090 正式 clone 上做最小真实模型/API smoke：加载 `Qwen/Qwen2.5-1.5B-Instruct` 和 tokenizer，跑极小 SFT 保存 checkpoint，不启动长训。
 
 ## 状态约定
 
@@ -35,11 +35,12 @@
 
 - 机器：`AutoDL4090`，SSH/Remote Runner 均可达；用户 `root`，工作目录 `/root/autodl-tmp/projects`。
 - 硬件：NVIDIA GeForce RTX 4090，约 49GB 显存；`/root/autodl-tmp` 约 750GB 可用。
-- 已安装：`tmux 3.2a`、`git`、`curl`、`gh 2.4.0`；`gh auth status` 显示尚未登录，需要负责人执行 `gh auth login`。
+- 已安装：`tmux 3.2a`、`git`、`curl`、`gh 2.4.0`；仓库已是 public，可用 HTTPS clone，不依赖远端 gh 登录。
 - 训练环境：复用 AutoDL base conda `/root/miniconda3`；已有 `torch 2.8.0+cu128` 且 CUDA 可用，已安装 `transformers 5.12.0`、`peft 0.19.1`、`trl 1.6.0`、`datasets 5.0.0`、`accelerate 1.14.0`、`pytest 9.1.0`、`ruff 0.15.17`。
-- 临时源码验证：由于本地仓库尚无 git remote，使用 tarball 上传到 `/root/autodl-tmp/projects/game24-rl-work`，只用于环境验证，不作为可报告训练来源。
-- 远端验证：base conda 中 `python -m compileall src scripts`、`pytest` 31 tests、`ruff check .`、`ruff format --check .`、`train_sft.py --dry-run`、`eval_checkpoint.py --solver-dry-run --limit 16` 均通过。
-- 风险：当前 TRL `SFTConfig` 不包含 `max_seq_length` 参数，真实 SFT 脚本按现状可能与 `trl 1.6.0` 不兼容；启动真实训练前必须做最小模型/API smoke 或调整脚本/固定依赖版本。
+- Public repo：`https://github.com/ElysiaFollower/game24-rl`；AutoDL 正式 clone 路径 `/root/autodl-tmp/projects/game24-rl`，commit `8c2091f`。
+- TRL 兼容修复：训练配置从旧 `max_seq_length` 改为当前 TRL `max_length`；使用 prompt/completion 数据格式，设置 `completion_only_loss=True`，并为 Qwen2.5 设置 `eos_token="<|im_end|>"`。
+- 依赖版本：`pyproject.toml` 已明确 train extras 范围：`accelerate>=1.14,<2`、`datasets>=5,<6`、`peft>=0.19,<1`、`torch>=2.8,<3`、`transformers>=5.12,<6`、`trl>=1.6,<2`。
+- 远端验证：AutoDL 正式 clone 的 base conda 中 `python -m compileall src scripts`、`pytest` 31 tests、`ruff check .`、`ruff format --check .`、`train_sft.py --dry-run`、`eval_checkpoint.py --solver-dry-run --limit 16` 均通过；`SFTConfig(max_length=512, eos_token="<|im_end|>", completion_only_loss=True)` 构造 smoke 通过。
 - 工具状态：Remote Runner 在 AutoDL 上有早期中断留下的 busy session 记录，但远端 `tmux ls` 无活动 session，未发现训练进程；后续可直接用 SSH 或新建 Remote Runner session。
 
 ### 2026-06-14 - M1 基座完成，进入 M2 readiness
