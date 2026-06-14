@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "anchors": [
+    {
+      "id": "active-plan-exists",
+      "check": "path_contains",
+      "path": "plans/active/0002-sft-training-readiness.md",
+      "pattern": "M2: SFT Training Readiness",
+      "severity": "fail",
+      "reason": "当前唯一 active task 必须有可恢复的任务合同。"
+    },
+    {
+      "id": "feature-list-active",
+      "check": "path_contains",
+      "path": "harness/feature_list.json",
+      "pattern": "\"id\": \"M2-first-pass-sft\"",
+      "severity": "fail",
+      "reason": "功能清单必须指向当前 WIP，避免继续修改已完成的 M1。"
+    },
+    {
+      "id": "remote-training-doc",
+      "check": "path_contains",
+      "path": "docs/architecture/remote-training-operations.md",
+      "pattern": "RTXpro6000",
+      "severity": "fail",
+      "reason": "M2 训练入口必须保留远程 GPU 运行纪律。"
+    },
+    {
+      "id": "sft-config-exists",
+      "check": "path_contains",
+      "path": "configs/sft_v1.yaml",
+      "pattern": "Qwen/Qwen2.5-1.5B-Instruct",
+      "severity": "fail",
+      "reason": "M2 主训练入口必须绑定课程模型配置。"
+    },
+    {
+      "id": "strict-verifier-tests",
+      "check": "path_contains",
+      "path": "tests/test_verifier.py",
+      "pattern": "verify_answer",
+      "severity": "fail",
+      "reason": "M2 evaluation/reward 仍必须复用 strict verifier。"
+    },
+    {
+      "id": "miniconda-bootstrap",
+      "check": "path_contains",
+      "path": "scripts/bootstrap_conda_env.sh",
+      "pattern": "CONDA_ENV_NAME",
+      "severity": "fail",
+      "reason": "M2 训练 readiness 必须保留本地 Miniconda 一键环境入口。"
+    }
+  ]
+}

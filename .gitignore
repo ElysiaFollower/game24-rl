@@ -1,0 +1,25 @@
+.DS_Store
+._*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local data and training artifacts.
+data/raw/
+data/processed/
+outputs/
+checkpoints/
+runs/
+wandb/
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Local environment files.
+.env
+.env.*

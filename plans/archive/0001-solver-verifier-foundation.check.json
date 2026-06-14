@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "anchors": [
+    {
+      "id": "active-plan-exists",
+      "check": "path_contains",
+      "path": "plans/active/0001-solver-verifier-foundation.md",
+      "pattern": "M1: Solver and Verifier Foundation",
+      "severity": "fail",
+      "reason": "当前唯一 active task 必须有可恢复的任务合同。"
+    },
+    {
+      "id": "feature-list-active",
+      "check": "path_contains",
+      "path": "harness/feature_list.json",
+      "pattern": "M1-solver-verifier-foundation",
+      "severity": "fail",
+      "reason": "功能清单必须指向当前 WIP，避免开发人员从错误任务开始。"
+    },
+    {
+      "id": "answer-contract-adr",
+      "check": "path_contains",
+      "path": "docs/adr/0011-use-single-answer-contract.md",
+      "pattern": "<answer>",
+      "severity": "fail",
+      "reason": "M1 verifier 必须遵守单一 answer contract。"
+    },
+    {
+      "id": "strict-verifier-adr",
+      "check": "path_contains",
+      "path": "docs/adr/0012-use-strict-ast-fraction-verifier.md",
+      "pattern": "Fraction",
+      "severity": "fail",
+      "reason": "M1 verifier 必须使用 AST + Fraction，不使用 eval。"
+    },
+    {
+      "id": "split-adr",
+      "check": "path_contains",
+      "path": "docs/adr/0004-use-multiset-isolated-splits.md",
+      "pattern": "multiset",
+      "severity": "fail",
+      "reason": "M1 split 必须按 multiset 隔离。"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Establish a strong SFT checkpoint before GRPO
+
+We will first train a strong SFT checkpoint and only then run GRPO from that checkpoint. SFT establishes the basic ability to follow the 24-point output format and imitate solver-generated search traces; GRPO needs that starting point because an untrained policy that samples all wrong answers provides little or no group-relative learning signal. If the SFT route fails to produce a competitive score, we will treat it primarily as an implementation or data-generation defect, not as evidence that the SFT-first strategy is invalid; however, SFT tuning must have a time and experiment budget so it does not become an open-ended sink.

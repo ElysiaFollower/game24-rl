@@ -1,0 +1,33 @@
+model_name: Qwen/Qwen2.5-1.5B-Instruct
+method: lora_sft
+task: standard_game24
+data:
+  split_seed: 20260613
+  traces_per_puzzle: 8
+  trace_type: short_success
+  target: 24
+  train_split: train
+  validation_split: validation
+  manifest_path: data/processed/splits/standard-game24-v1.json
+  train_jsonl_path: data/processed/sft/game24-sft-v1-train.jsonl
+training:
+  output_dir: outputs/sft_v1
+  run_name: qwen25_15b_lora_sft_v1
+  max_seq_length: 512
+  learning_rate: 0.0001
+  num_train_epochs: 3
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  save_steps: 50
+  logging_steps: 5
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  seed: 20260613
+  bf16: true
+  report_to:
+    - none
+evaluation:
+  do_sample: false
+  max_new_tokens: 256
+  success_gate: 0.70
