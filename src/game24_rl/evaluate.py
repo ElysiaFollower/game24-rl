@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from game24_rl.data_gen import format_completion, format_prompt
+from game24_rl.data_gen import PROMPT_STYLE_PLAIN, format_completion, format_prompt
 from game24_rl.datasets import read_manifest
 from game24_rl.solver import solve_puzzle
 from game24_rl.verifier import VERIFIER_VERSION, VerificationResult, verify_answer
@@ -117,6 +117,7 @@ def evaluate_raw_outputs_file(
     split_manifest: str | Path,
     split: str,
     decoding: DecodingConfig,
+    generation_prompt_style: str | None = None,
 ) -> dict[str, Any]:
     """Evaluates raw model outputs and writes a machine-readable report."""
 
@@ -131,6 +132,7 @@ def evaluate_raw_outputs_file(
         split_manifest=split_manifest,
         split=split,
         decoding=decoding,
+        generation_prompt_style=generation_prompt_style,
     )
     output_path = Path(report_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,6 +153,7 @@ def build_evaluation_report(
     split_manifest: str | Path,
     split: str,
     decoding: DecodingConfig,
+    generation_prompt_style: str | None = None,
 ) -> dict[str, Any]:
     """Builds the report artifact for one evaluation run."""
 
@@ -164,6 +167,7 @@ def build_evaluation_report(
         "answer_contract": ANSWER_CONTRACT,
         "verifier_version": VERIFIER_VERSION,
         "decoding": asdict(decoding),
+        "generation_prompt_style": generation_prompt_style,
         "raw_outputs_path": str(raw_outputs_path),
         "metrics": {
             "total": summary.total,
@@ -183,6 +187,7 @@ def build_solver_raw_outputs(
     *,
     split: str,
     limit: int | None = None,
+    prompt_style: str = PROMPT_STYLE_PLAIN,
 ) -> list[dict[str, Any]]:
     """Builds verifier-valid raw outputs from the exact solver for dry runs."""
 
@@ -203,7 +208,7 @@ def build_solver_raw_outputs(
                 "id": record["id"],
                 "numbers": record["numbers"],
                 "target": record["target"],
-                "prompt": format_prompt(record["numbers"]),
+                "prompt": format_prompt(record["numbers"], prompt_style=prompt_style),
                 "output": output,
                 "source": "exact_solver_dry_run",
             }
@@ -218,6 +223,7 @@ def evaluate_solver_dry_run(
     split: str = "validation",
     limit: int = 16,
     model_name: str = "exact-solver-dry-run",
+    prompt_style: str = PROMPT_STYLE_PLAIN,
 ) -> dict[str, Any]:
     """Writes raw-output and evaluation artifacts without loading a model."""
 
@@ -225,7 +231,12 @@ def evaluate_solver_dry_run(
     output_path = Path(output_dir)
     raw_outputs_path = output_path / f"{split}-raw-outputs.jsonl"
     report_path = output_path / f"{split}-eval-report.json"
-    raw_outputs = build_solver_raw_outputs(manifest, split=split, limit=limit)
+    raw_outputs = build_solver_raw_outputs(
+        manifest,
+        split=split,
+        limit=limit,
+        prompt_style=prompt_style,
+    )
     write_jsonl(raw_outputs, raw_outputs_path)
     return evaluate_raw_outputs_file(
         raw_outputs_path=raw_outputs_path,
@@ -235,6 +246,7 @@ def evaluate_solver_dry_run(
         split_manifest=manifest_path,
         split=split,
         decoding=DecodingConfig(),
+        generation_prompt_style=prompt_style,
     )
 
 
@@ -247,6 +259,7 @@ def generate_checkpoint_outputs(
     checkpoint: str | Path,
     decoding: DecodingConfig,
     limit: int | None = None,
+    prompt_style: str = PROMPT_STYLE_PLAIN,
 ) -> None:
     """Generates model outputs for a split and writes raw-output JSONL.
 
@@ -254,6 +267,7 @@ def generate_checkpoint_outputs(
     tests do not need Transformers, PEFT, TRL, Torch, or model downloads.
     """
 
+    import torch  # pylint: disable=import-outside-toplevel
     from peft import PeftModel  # pylint: disable=import-outside-toplevel
     from transformers import (  # pylint: disable=import-outside-toplevel
         AutoModelForCausalLM,
@@ -279,16 +293,17 @@ def generate_checkpoint_outputs(
 
     raw_outputs = []
     for record in records:
-        prompt = format_prompt(record["numbers"])
+        prompt = format_prompt(record["numbers"], prompt_style=prompt_style)
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        generated = model.generate(
-            **inputs,
-            do_sample=decoding.do_sample,
-            max_new_tokens=decoding.max_new_tokens,
-            temperature=decoding.temperature,
-            top_p=decoding.top_p,
-            pad_token_id=tokenizer.eos_token_id,
-        )
+        with torch.inference_mode():
+            generated = model.generate(
+                **inputs,
+                do_sample=decoding.do_sample,
+                max_new_tokens=decoding.max_new_tokens,
+                temperature=decoding.temperature,
+                top_p=decoding.top_p,
+                pad_token_id=tokenizer.eos_token_id,
+            )
         output = tokenizer.decode(
             generated[0][inputs["input_ids"].shape[-1] :],
             skip_special_tokens=True,

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "plan": "plans/active/20260615-sft-audit-and-repair.md",
+  "feature_id": "M2-sft-audit-and-repair",
+  "anchors": [
+    {
+      "id": "active-plan-exists",
+      "severity": "fail",
+      "reason": "当前任务必须有可恢复的审计与修复合同，避免低分排查继续散落在聊天记录里。",
+      "check": "path_contains",
+      "path": "plans/active/20260615-sft-audit-and-repair.md",
+      "pattern": "SFT 严格审计与修复",
+      "suggest": "确认 active plan 是否被误删或任务切换后未更新。"
+    },
+    {
+      "id": "feature-list-active",
+      "severity": "fail",
+      "reason": "功能清单必须指向当前唯一 WIP，旧 SFT readiness 不应继续占用 active 状态。",
+      "check": "evidence_contains",
+      "feature_id": "M2-sft-audit-and-repair",
+      "pattern": "active task initialized",
+      "suggest": "更新 harness/feature_list.json，确保 M2-sft-audit-and-repair 为唯一 active 并记录初始化 evidence。"
+    },
+    {
+      "id": "audit-report",
+      "severity": "fail",
+      "reason": "本任务的核心产出是可复现审计报告，必须覆盖评测、数据、训练和 baseline 对比。",
+      "check": "path_exists",
+      "path": "docs/experiments/sft_audit_report.md",
+      "suggest": "创建并维护 docs/experiments/sft_audit_report.md，记录结论、证据、修复和未决风险。"
+    },
+    {
+      "id": "case-study-artifact",
+      "severity": "warn",
+      "reason": "只看 aggregate metric 不足以理解模型在训练过程中做了什么；必须有失败样本和训练样本 case study。",
+      "check": "path_exists",
+      "path": "outputs/diagnostics/sft_case_study/summary.json",
+      "suggest": "运行或创建 case-study 诊断，输出 ignored artifact，并在审计报告中引用路径和摘要。"
+    },
+    {
+      "id": "baseline-context",
+      "severity": "warn",
+      "reason": "用户要求允许对比 baseline reference repo，审计报告必须显式说明可比性和实现差异。",
+      "check": "path_contains",
+      "path": "docs/experiments/sft_audit_report.md",
+      "pattern": "LLM4Game24",
+      "suggest": "在审计报告中补充 LLM4Game24 相关实现差异或说明无法访问的 blocker。"
+    }
+  ]
+}

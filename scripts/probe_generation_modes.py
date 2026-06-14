@@ -10,14 +10,13 @@ from pathlib import Path
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from game24_rl.data_gen import format_prompt
 from game24_rl.datasets import read_manifest
 from game24_rl.evaluate import (
     DecodingConfig,
     evaluate_raw_outputs_file,
     write_jsonl,
 )
-from game24_rl.data_gen import format_prompt
-
 
 RAW_OUTPUT_SCHEMA_VERSION = "game24-raw-outputs-v1"
 
@@ -26,7 +25,10 @@ def main() -> None:
     """Runs small generation-mode probes against one LoRA checkpoint."""
 
     parser = argparse.ArgumentParser(description=main.__doc__)
-    parser.add_argument("--manifest", default="data/processed/splits/standard-game24-v1.json")
+    parser.add_argument(
+        "--manifest",
+        default="data/processed/splits/standard-game24-v1.json",
+    )
     parser.add_argument("--split", default="validation")
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-1.5B-Instruct")
     parser.add_argument("--checkpoint", required=True)

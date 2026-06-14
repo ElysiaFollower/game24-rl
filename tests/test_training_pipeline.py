@@ -10,6 +10,7 @@ import yaml
 from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.evaluate import (
     DecodingConfig,
+    build_solver_raw_outputs,
     evaluate_raw_outputs_file,
     evaluate_solver_dry_run,
     write_jsonl,
@@ -89,6 +90,28 @@ def test_sft_inputs_regenerate_stale_jsonl(tmp_path: Path) -> None:
     assert train_jsonl_path.read_text(encoding="utf-8") == original
 
 
+def test_sft_data_config_controls_generated_trace_and_prompt(tmp_path: Path) -> None:
+    config_path = _write_test_config(
+        tmp_path,
+        data_overrides={
+            "trace_type": "checked_success",
+            "prompt_style": "qwen_chat",
+        },
+    )
+
+    result = run_sft(config_path=config_path, dry_run=True)
+
+    train_jsonl_path = Path(result["train_jsonl_path"])
+    first_record = json.loads(
+        train_jsonl_path.read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert first_record["trace_type"] == "checked_success"
+    assert first_record["prompt_style"] == "qwen_chat"
+    assert "Check: the final expression" in first_record["completion"]
+    assert first_record["prompt"].startswith("<|im_start|>system\n")
+    assert first_record["prompt"].endswith("<|im_start|>assistant\n")
+
+
 def test_raw_output_evaluation_report_schema(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     write_manifest(build_split_manifest(), manifest_path)
@@ -130,6 +153,7 @@ def test_raw_output_evaluation_report_schema(tmp_path: Path) -> None:
     assert report["schema_version"] == "game24-eval-report-v1"
     assert report["verifier_version"] == VERIFIER_VERSION
     assert report["answer_contract"] == "<answer>...</answer>"
+    assert report["generation_prompt_style"] is None
     assert report["metrics"]["total"] == 3
     assert report["metrics"]["format_rate"] == 2 / 3
     assert report["metrics"]["valid_expr_rate"] == 2 / 3
@@ -152,7 +176,34 @@ def test_solver_dry_run_evaluation_is_perfect_on_solvable_split(tmp_path: Path) 
     assert (tmp_path / "eval" / "validation-eval-report.json").exists()
 
 
-def _write_test_config(tmp_path: Path) -> Path:
+def test_solver_dry_run_can_record_generation_prompt_style(tmp_path: Path) -> None:
+    manifest = build_split_manifest()
+    raw_outputs = build_solver_raw_outputs(
+        manifest,
+        split="validation",
+        limit=1,
+        prompt_style="qwen_chat",
+    )
+
+    assert raw_outputs[0]["prompt"].startswith("<|im_start|>system\n")
+
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(manifest, manifest_path)
+    report = evaluate_solver_dry_run(
+        manifest_path=manifest_path,
+        output_dir=tmp_path / "eval",
+        prompt_style="qwen_chat",
+        limit=1,
+    )
+
+    assert report["generation_prompt_style"] == "qwen_chat"
+
+
+def _write_test_config(
+    tmp_path: Path,
+    *,
+    data_overrides: dict[str, object] | None = None,
+) -> Path:
     manifest_path = tmp_path / "splits" / "manifest.json"
     train_jsonl_path = tmp_path / "sft" / "train.jsonl"
     output_dir = tmp_path / "outputs"
@@ -179,6 +230,8 @@ def _write_test_config(tmp_path: Path) -> Path:
             "success_gate": 0.7,
         },
     }
+    if data_overrides:
+        config["data"].update(data_overrides)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return config_path

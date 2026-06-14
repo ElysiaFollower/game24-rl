@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-
 METRIC_COLUMNS = [
     "step",
     "epoch",
@@ -95,7 +94,10 @@ def _latest_state_path(run_dir: Path) -> Path:
     ]
     if not checkpoints:
         raise FileNotFoundError(f"no numeric checkpoint directories under {run_dir}")
-    checkpoint = max(checkpoints, key=lambda path: int(path.name.removeprefix("checkpoint-")))
+    checkpoint = max(
+        checkpoints,
+        key=lambda path: int(path.name.removeprefix("checkpoint-")),
+    )
     state_path = checkpoint / "trainer_state.json"
     if not state_path.exists():
         raise FileNotFoundError(f"missing trainer state: {state_path}")
@@ -169,33 +171,74 @@ def _write_svg(
     y_ticks = _ticks(min_y, max_y, count=5)
     x_ticks = _ticks(min_x, max_x, count=6)
     elements = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+            f'height="{height}" viewBox="0 0 {width} {height}">'
+        ),
         '<rect width="100%" height="100%" fill="#ffffff"/>',
-        f'<text x="{width / 2:.0f}" y="24" text-anchor="middle" font-family="Arial" font-size="18" fill="#111827">{escape(title)}</text>',
-        f'<line x1="{left}" y1="{height - bottom}" x2="{width - right}" y2="{height - bottom}" stroke="#374151"/>',
-        f'<line x1="{left}" y1="{top}" x2="{left}" y2="{height - bottom}" stroke="#374151"/>',
+        (
+            f'<text x="{width / 2:.0f}" y="24" text-anchor="middle" '
+            f'font-family="Arial" font-size="18" fill="#111827">'
+            f"{escape(title)}</text>"
+        ),
+        (
+            f'<line x1="{left}" y1="{height - bottom}" '
+            f'x2="{width - right}" y2="{height - bottom}" '
+            'stroke="#374151"/>'
+        ),
+        (
+            f'<line x1="{left}" y1="{top}" x2="{left}" '
+            f'y2="{height - bottom}" stroke="#374151"/>'
+        ),
     ]
     for tick in y_ticks:
         y = scale_y(tick)
         elements.extend(
             [
-                f'<line x1="{left}" y1="{y:.2f}" x2="{width - right}" y2="{y:.2f}" stroke="#e5e7eb"/>',
-                f'<text x="{left - 10}" y="{y + 4:.2f}" text-anchor="end" font-family="Arial" font-size="12" fill="#4b5563">{tick:.4g}</text>',
+                (
+                    f'<line x1="{left}" y1="{y:.2f}" '
+                    f'x2="{width - right}" y2="{y:.2f}" '
+                    'stroke="#e5e7eb"/>'
+                ),
+                (
+                    f'<text x="{left - 10}" y="{y + 4:.2f}" '
+                    'text-anchor="end" font-family="Arial" font-size="12" '
+                    f'fill="#4b5563">{tick:.4g}</text>'
+                ),
             ]
         )
     for tick in x_ticks:
         x = scale_x(tick)
         elements.extend(
             [
-                f'<line x1="{x:.2f}" y1="{height - bottom}" x2="{x:.2f}" y2="{height - bottom + 5}" stroke="#374151"/>',
-                f'<text x="{x:.2f}" y="{height - bottom + 22}" text-anchor="middle" font-family="Arial" font-size="12" fill="#4b5563">{tick:.0f}</text>',
+                (
+                    f'<line x1="{x:.2f}" y1="{height - bottom}" '
+                    f'x2="{x:.2f}" y2="{height - bottom + 5}" '
+                    'stroke="#374151"/>'
+                ),
+                (
+                    f'<text x="{x:.2f}" y="{height - bottom + 22}" '
+                    'text-anchor="middle" font-family="Arial" font-size="12" '
+                    f'fill="#4b5563">{tick:.0f}</text>'
+                ),
             ]
         )
     elements.extend(
         [
-            f'<polyline fill="none" stroke="#2563eb" stroke-width="2.2" points="{polyline}"/>',
-            f'<text x="{width / 2:.0f}" y="{height - 14}" text-anchor="middle" font-family="Arial" font-size="13" fill="#374151">step</text>',
-            f'<text transform="translate(18 {height / 2:.0f}) rotate(-90)" text-anchor="middle" font-family="Arial" font-size="13" fill="#374151">{escape(y_label)}</text>',
+            (
+                '<polyline fill="none" stroke="#2563eb" stroke-width="2.2" '
+                f'points="{polyline}"/>'
+            ),
+            (
+                f'<text x="{width / 2:.0f}" y="{height - 14}" '
+                'text-anchor="middle" font-family="Arial" font-size="13" '
+                'fill="#374151">step</text>'
+            ),
+            (
+                f'<text transform="translate(18 {height / 2:.0f}) rotate(-90)" '
+                'text-anchor="middle" font-family="Arial" font-size="13" '
+                f'fill="#374151">{escape(y_label)}</text>'
+            ),
             "</svg>",
         ]
     )

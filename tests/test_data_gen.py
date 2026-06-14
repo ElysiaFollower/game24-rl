@@ -53,6 +53,30 @@ def test_prompt_ends_with_separator_before_completion() -> None:
     assert not prompt.rstrip().endswith("<think>")
 
 
+def test_qwen_chat_prompt_has_assistant_boundary() -> None:
+    prompt = format_prompt((1, 6, 9, 12), prompt_style="qwen_chat")
+
+    assert prompt.startswith("<|im_start|>system\n")
+    assert "<|im_start|>user\n1 6 9 12\n<|im_end|>\n" in prompt
+    assert prompt.endswith("<|im_start|>assistant\n")
+
+
+def test_checked_success_trace_keeps_verifier_contract() -> None:
+    records = build_sft_records(
+        [(8, 2, 7, 3)],
+        traces_per_puzzle=1,
+        trace_type="checked_success",
+        prompt_style="qwen_chat",
+    )
+
+    record = records[0]
+    assert "Check: the final expression" in record["completion"]
+    assert "= 24." in record["completion"]
+    assert record["trace_type"] == "checked_success"
+    assert record["prompt_style"] == "qwen_chat"
+    assert verify_answer(record["completion"], record["numbers"]).valid
+
+
 def test_build_sft_records_rejects_unsolvable_puzzles() -> None:
     try:
         build_sft_records([(1, 1, 1, 1)])
@@ -60,3 +84,19 @@ def test_build_sft_records_rejects_unsolvable_puzzles() -> None:
         assert "unsolvable" in str(exc)
     else:
         raise AssertionError("expected unsolvable puzzle to fail")
+
+
+def test_build_sft_records_rejects_unknown_styles() -> None:
+    try:
+        build_sft_records([(8, 2, 7, 3)], trace_type="unknown")
+    except ValueError as exc:
+        assert "unsupported trace_type" in str(exc)
+    else:
+        raise AssertionError("expected unsupported trace_type to fail")
+
+    try:
+        build_sft_records([(8, 2, 7, 3)], prompt_style="unknown")
+    except ValueError as exc:
+        assert "unsupported prompt_style" in str(exc)
+    else:
+        raise AssertionError("expected unsupported prompt_style to fail")

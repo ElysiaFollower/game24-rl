@@ -130,7 +130,7 @@ fi
 if [ -f "harness/session-handoff.md" ]; then
   for heading in "## 仓库状态" "## 当前模式" "## 当前已验证状态" "## 仍损坏或未验证" "## 清洁状态" "## 下一步最佳动作" "## 命令"; do
     if ! grep -q "$heading" "harness/session-handoff.md"; then
-      fail "session-handoff.md 缺少标题：$heading。交接必须覆盖状态、证据、风险、清洁状态和下一步。"
+      fail "session-handoff.md 缺少标题：${heading}。交接必须覆盖状态、证据、风险、清洁状态和下一步。"
     fi
   done
 fi

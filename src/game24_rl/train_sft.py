@@ -30,6 +30,7 @@ class SftDataConfig:
     split_seed: int = DEFAULT_SPLIT_SEED
     traces_per_puzzle: int = 8
     trace_type: str = "short_success"
+    prompt_style: str = "plain"
     target: int = 24
     train_split: str = "train"
     validation_split: str = "validation"
@@ -116,6 +117,8 @@ def ensure_sft_inputs(config: SftRunConfig) -> tuple[Path, Path]:
         manifest,
         split=config.data.train_split,
         traces_per_puzzle=config.data.traces_per_puzzle,
+        trace_type=config.data.trace_type,
+        prompt_style=config.data.prompt_style,
     )
     if _needs_regeneration(train_jsonl_path, records):
         write_jsonl(records, train_jsonl_path)

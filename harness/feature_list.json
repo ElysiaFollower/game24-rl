@@ -50,7 +50,7 @@
       "area": "training",
       "title": "first-pass short-success-trace LoRA SFT",
       "behavior": "基于 M1 solver 生成约 8 条短成功 trace / training puzzle，训练 Qwen2.5-1.5B-Instruct LoRA SFT，输出 R1 wrapper。",
-      "status": "active",
+      "status": "blocked",
       "verification": [
         "./scripts/harness-check.sh",
         "python -m compileall src scripts",
@@ -77,7 +77,8 @@
         "2026-06-14 remote-runner issue: session sess_20260613_173931_324141_491ddc5d remains busy after an exited failed readiness command; second session was destroyed successfully and no running remote command was listed.",
         "2026-06-14 environment setup: pyproject.toml now exposes dev/train extras and game24-* console scripts for conda-first bootstrap.",
         "2026-06-14 environment setup: environment.yml, environment-train.yml, and scripts/bootstrap_conda_env.sh added as Miniconda-first one-command setup path.",
-        "2026-06-14 environment setup: local python -m pip install --no-build-isolation -e .[dev] succeeded, proving editable install and package metadata are valid."
+        "2026-06-14 environment setup: local python -m pip install --no-build-isolation -e .[dev] succeeded, proving editable install and package metadata are valid.",
+        "2026-06-15 SFT v2 checkpoint-500 validation solve_rate=21/136 and checkpoint-1500 solve_rate=29/136; M2 first-pass result is below gate and transitions to audit/repair instead of GRPO."
       ],
       "notes": [
         "Active plan: plans/active/0002-sft-training-readiness.md",
@@ -86,7 +87,9 @@
         "远程实际训练需要 public repo URL 和已推送代码；当前本地 git remote 为空。",
         "RTXpro6000 runner has Miniconda at /home/runner/miniconda3, but full train dependencies are not installed yet; use bootstrap, a prebuilt env, offline wheels, or AutoDL before real training.",
         "RTXpro6000 root filesystem had about 25G free during the latest check, so full model/dependency caches may be tight.",
-        "Miniconda bootstrap is now the preferred local path; pyproject exposes dev/train extras and console scripts."
+        "Miniconda bootstrap is now the preferred local path; pyproject exposes dev/train extras and console scripts.",
+        "Blocked pending M2-sft-audit-and-repair: low solve_rate persists after prompt/stale-data fix, so pipeline/design audit is required before treating SFT as passing.",
+        "SFT v2 final reached only 42/136 validation solve_rate; this remains blocked pending M2-sft-audit-and-repair retraining evidence."
       ]
     },
     {
@@ -121,6 +124,39 @@
       "evidence": [],
       "notes": [
         "这不是第一阶段阻塞项；不要在 M1/M2 前抢占主线时间。"
+      ]
+    },
+    {
+      "id": "M2-sft-audit-and-repair",
+      "priority": "P0",
+      "area": "training",
+      "title": "SFT 严格审计、case study 和修复复训",
+      "behavior": "对低准确率 SFT 进行评测代码、数据、训练代码和 baseline 差异审计；产出报告、case study、focused tests/diagnostics，修复确认的问题并启动新一轮 SFT。",
+      "status": "active",
+      "verification": [
+        "./scripts/harness-check.sh",
+        "python -m compileall src scripts",
+        "pytest tests/test_solver.py tests/test_verifier.py tests/test_data_gen.py tests/test_training_pipeline.py",
+        "ruff check .",
+        "ruff format --check .",
+        "manual: docs/experiments/sft_audit_report.md records evaluation/data/training/baseline audit evidence",
+        "manual: outputs/diagnostics/sft_case_study/summary.json exists and is cited by the audit report",
+        "manual: repaired SFT run is started on AutoDL and checkpoint eval artifacts are recorded"
+      ],
+      "evidence": [
+        "2026-06-15 active task initialized: plans/active/20260615-sft-audit-and-repair.md and .check.json created after SFT v2 checkpoint-1500 remained low at solve_rate=29/136.",
+        "2026-06-15 audit: SFT v2 final validation solve_rate=42/136 (30.88%), format_rate=1.0, valid_expr_rate=1.0; low score is not a checkpoint-timing artifact.",
+        "2026-06-15 audit: docs/experiments/sft_audit_report.md records evaluation, data/case-study, training, and LLM4Game24 baseline comparison findings.",
+        "2026-06-15 case study: outputs/diagnostics/sft_case_study/summary.json shows checkpoint-1500 had 29 ok and 107 wrong_value with train/validation overlap count 0.",
+        "2026-06-15 repair: trace_type and prompt_style now flow through data generation, training config, CLI, and evaluation report artifacts; configs/sft_v3_checked_chat.yaml created.",
+        "2026-06-15 validation: python -m compileall src scripts passed; pytest tests/test_solver.py tests/test_verifier.py tests/test_data_gen.py tests/test_training_pipeline.py passed with 38 tests; ruff check src scripts tests and ruff format --check src scripts tests configs passed; pytest passed with 38 tests.",
+        "2026-06-15 dry-run/data audit: python scripts/train_sft.py --config configs/sft_v3_checked_chat.yaml --dry-run passed; generated v3 train JSONL has 11706/11706 strict-verifier-valid completions."
+      ],
+      "notes": [
+        "Audit order is intentional: evaluation code first, then data samples/distribution, then training code/generation/checkpoint behavior.",
+        "Allowed to compare against LLM4Game24 as reference baseline, but do not copy its code or loosen this repo strict verifier/reporting contract.",
+        "Current collaboration mode remains human-in-loop; stop for user confirmation before changing model, split, answer contract, verifier standard, or training route.",
+        "Next remote run: qwen25_15b_lora_sft_v3_checked_chat with prompt_style=qwen_chat and trace_type=checked_success; evaluate checkpoints with --prompt-style qwen_chat."
       ]
     }
   ]

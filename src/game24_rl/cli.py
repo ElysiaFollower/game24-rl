@@ -66,6 +66,8 @@ def build_sft_v1_main() -> None:
     )
     parser.add_argument("--split", default="train")
     parser.add_argument("--traces-per-puzzle", type=int, default=8)
+    parser.add_argument("--trace-type", default="short_success")
+    parser.add_argument("--prompt-style", default="plain")
     args = parser.parse_args()
 
     manifest = read_split_manifest(args.manifest)
@@ -73,6 +75,8 @@ def build_sft_v1_main() -> None:
         manifest,
         split=args.split,
         traces_per_puzzle=args.traces_per_puzzle,
+        trace_type=args.trace_type,
+        prompt_style=args.prompt_style,
     )
     write_jsonl(records, args.output)
     print(f"wrote {len(records)} records to {args.output}")
@@ -136,6 +140,7 @@ def eval_checkpoint_main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--top-p", type=float)
+    parser.add_argument("--prompt-style", default="plain")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -154,6 +159,7 @@ def eval_checkpoint_main() -> None:
             split=args.split,
             limit=args.limit or 16,
             model_name="exact-solver-dry-run",
+            prompt_style=args.prompt_style,
         )
     else:
         raw_outputs = Path(args.raw_outputs) if args.raw_outputs else None
@@ -172,6 +178,7 @@ def eval_checkpoint_main() -> None:
                 checkpoint=args.checkpoint,
                 decoding=decoding,
                 limit=args.limit,
+                prompt_style=args.prompt_style,
             )
         report = evaluate_raw_outputs_file(
             raw_outputs_path=raw_outputs,
@@ -181,6 +188,7 @@ def eval_checkpoint_main() -> None:
             split_manifest=args.manifest,
             split=args.split,
             decoding=decoding,
+            generation_prompt_style=args.prompt_style,
         )
 
     metrics = report["metrics"]
