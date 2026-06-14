@@ -150,7 +150,8 @@
         "2026-06-15 case study: outputs/diagnostics/sft_case_study/summary.json shows checkpoint-1500 had 29 ok and 107 wrong_value with train/validation overlap count 0.",
         "2026-06-15 repair: trace_type and prompt_style now flow through data generation, training config, CLI, and evaluation report artifacts; configs/sft_v3_checked_chat.yaml created.",
         "2026-06-15 validation: python -m compileall src scripts passed; pytest tests/test_solver.py tests/test_verifier.py tests/test_data_gen.py tests/test_training_pipeline.py passed with 38 tests; ruff check src scripts tests and ruff format --check src scripts tests configs passed; pytest passed with 38 tests.",
-        "2026-06-15 dry-run/data audit: python scripts/train_sft.py --config configs/sft_v3_checked_chat.yaml --dry-run passed; generated v3 train JSONL has 11706/11706 strict-verifier-valid completions."
+        "2026-06-15 dry-run/data audit: python scripts/train_sft.py --config configs/sft_v3_checked_chat.yaml --dry-run passed; generated v3 train JSONL has 11706/11706 strict-verifier-valid completions.",
+        "2026-06-15 remote train: AutoDL tmux session game24-sft-v3-checked-chat started configs/sft_v3_checked_chat.yaml; observed training at step 57/4392 with checkpoint-50 written and GPU active."
       ],
       "notes": [
         "Audit order is intentional: evaluation code first, then data samples/distribution, then training code/generation/checkpoint behavior.",

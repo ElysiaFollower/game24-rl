@@ -50,3 +50,13 @@
 - M1 solver/verifier/data split foundation 已 passing；验收数字为 1,820 total / 1,362 solvable / 458 unsolvable。
 - M2 training readiness 已实现并归档：配置解析、dry-run、checkpoint resume、strict eval artifacts、Miniconda/bootstrap、AutoDL 环境验证。
 - 当前不得进入 GRPO；GRPO 仍等待 SFT warm start 有可信高分后再开始。
+
+### 2026-06-15 - SFT v3 remote training started
+
+- Commit synced to AutoDL: `372e17a`.
+- Remote dirty worktree before sync was preserved in stash `autodl-before-sft-v3-sync-20260615-011851`.
+- AutoDL validation before launch: `./scripts/harness-check.sh` passed with expected warning for ignored case-study artifact absence; `python -m compileall src scripts` passed; `pytest tests/test_data_gen.py tests/test_training_pipeline.py` passed with 17 tests; v3 dry-run generated `11706/11706` strict-verifier-valid records.
+- Training tmux session: `game24-sft-v3-checked-chat`.
+- Run dir: `outputs/sft_v1/qwen25_15b_lora_sft_v3_checked_chat`.
+- Log file: `outputs/sft_v1/qwen25_15b_lora_sft_v3_checked_chat/logs/train-20260615-011937.log`.
+- Observed normal progress: tokenization completed, trainer reached about `57/4392` steps, `checkpoint-50` exists, GPU active around `6065 MiB / 49140 MiB` and `30%` utilization.
