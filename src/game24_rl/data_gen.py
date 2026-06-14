@@ -18,7 +18,7 @@ def format_prompt(numbers: Sequence[int]) -> str:
     joined = " ".join(str(number) for number in numbers)
     return (
         "Solve the 24-point game. Use each provided number exactly once: "
-        f"{joined}. Return a short <think> trace and one <answer> expression."
+        f"{joined}. Return a short <think> trace and one <answer> expression.\n"
     )
 
 

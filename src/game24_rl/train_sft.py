@@ -112,12 +112,12 @@ def ensure_sft_inputs(config: SftRunConfig) -> tuple[Path, Path]:
     else:
         manifest = read_manifest(manifest_path)
 
-    if not train_jsonl_path.exists():
-        records = records_from_split_manifest(
-            manifest,
-            split=config.data.train_split,
-            traces_per_puzzle=config.data.traces_per_puzzle,
-        )
+    records = records_from_split_manifest(
+        manifest,
+        split=config.data.train_split,
+        traces_per_puzzle=config.data.traces_per_puzzle,
+    )
+    if _needs_regeneration(train_jsonl_path, records):
         write_jsonl(records, train_jsonl_path)
 
     return manifest_path, train_jsonl_path
@@ -345,3 +345,28 @@ def _checkpoint_sort_key(path: Path) -> tuple[int, str]:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _needs_regeneration(train_jsonl_path: Path, records: list[dict[str, Any]]) -> bool:
+    """Returns True when the cached SFT JSONL is missing or stale."""
+
+    if not train_jsonl_path.exists():
+        return True
+
+    try:
+        cached_records = [
+            json.loads(line)
+            for line in train_jsonl_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except json.JSONDecodeError:
+        return True
+
+    if len(cached_records) != len(records):
+        return True
+
+    for cached, expected in zip(cached_records, records, strict=True):
+        if cached != expected:
+            return True
+
+    return False

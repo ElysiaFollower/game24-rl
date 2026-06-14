@@ -1,6 +1,6 @@
 """Tests for SFT data generation."""
 
-from game24_rl.data_gen import build_sft_records
+from game24_rl.data_gen import build_sft_records, format_prompt
 from game24_rl.datasets import build_split_manifest, validate_no_split_overlap
 from game24_rl.verifier import verify_answer
 
@@ -44,6 +44,13 @@ def test_build_sft_records_are_verifier_valid() -> None:
         assert "<answer>" in record["completion"]
         result = verify_answer(record["completion"], record["numbers"])
         assert result.valid, result.reason
+
+
+def test_prompt_ends_with_separator_before_completion() -> None:
+    prompt = format_prompt((1, 6, 9, 12))
+
+    assert prompt.endswith("\n")
+    assert not prompt.rstrip().endswith("<think>")
 
 
 def test_build_sft_records_rejects_unsolvable_puzzles() -> None:

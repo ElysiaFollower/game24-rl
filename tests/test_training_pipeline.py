@@ -75,6 +75,20 @@ def test_sft_dry_run_writes_recoverable_artifacts(tmp_path: Path) -> None:
     assert Path(metadata["train_jsonl_path"]).exists()
 
 
+def test_sft_inputs_regenerate_stale_jsonl(tmp_path: Path) -> None:
+    config_path = _write_test_config(tmp_path)
+
+    first = run_sft(config_path=config_path, dry_run=True)
+    train_jsonl_path = Path(first["train_jsonl_path"])
+    original = train_jsonl_path.read_text(encoding="utf-8")
+    train_jsonl_path.write_text(original + '{"stale": true}\n', encoding="utf-8")
+
+    second = run_sft(config_path=config_path, dry_run=True)
+
+    assert second["train_jsonl_path"] == first["train_jsonl_path"]
+    assert train_jsonl_path.read_text(encoding="utf-8") == original
+
+
 def test_raw_output_evaluation_report_schema(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     write_manifest(build_split_manifest(), manifest_path)
