@@ -138,3 +138,31 @@
 - Intended use: generate controlled SFT ablations that compare first-path,
   multiple-success-path, and compressed-search-trace data while keeping the
   same split, strict verifier, and `<answer>...</answer>` contract.
+
+### 2026-06-15 - Baseline-format v2 full finetune backup result
+
+- Purpose: create a stronger SFT backup by moving closer to the reference
+  baseline recipe while preserving this repository's split, strict verifier, and
+  `<answer>...</answer>` reported contract.
+- Script: `scripts/experiments/run_rollback_sft_experiment.py`.
+- Training command used `--mode train` on the already-built dataset, not
+  `--mode all`, to avoid rebuilding rollback traces.
+- Model: `Qwen/Qwen2.5-1.5B-Instruct`.
+- Training mode: full finetuning via Transformers `Trainer`, prompt masking,
+  `optim=adamw_torch`, `learning_rate=5e-5`, `max_steps=400`,
+  `save_steps=200`, `max_length=1024`, `max_new_tokens=1024`.
+- Dataset:
+  `data/processed/experiments/game24-baseline-format-v2-qwen-answer-train.jsonl`
+  with `35324` records, `1011` unique train multisets, `32355` rollback records,
+  and validation overlap `0`.
+- AutoDL session: `game24-baseline-v2-full`.
+- Run dir: `outputs/experiments/baseline_format_v2_full`.
+- Eval summary:
+  `outputs/experiments/baseline_format_v2_full/eval/summary.json`.
+- Result: `checkpoint-400` and `final` both reached `51/136 = 37.50%`
+  validation solve rate, with `format_rate=38.97%` and
+  `valid_expr_rate=38.24%`.
+- Interpretation: this is the best repo-native backup so far and improves over
+  SFT v2 final `30.88%`, but it remains far below the reference baseline.
+  Remaining work should compare raw failures and training/data differences
+  against baseline before another major run.

@@ -151,7 +151,8 @@
         "2026-06-15 repair: trace_type and prompt_style now flow through data generation, training config, CLI, and evaluation report artifacts; configs/sft_v3_checked_chat.yaml created.",
         "2026-06-15 validation: python -m compileall src scripts passed; pytest tests/test_solver.py tests/test_verifier.py tests/test_data_gen.py tests/test_training_pipeline.py passed with 38 tests; ruff check src scripts tests and ruff format --check src scripts tests configs passed; pytest passed with 38 tests.",
         "2026-06-15 dry-run/data audit: python scripts/train_sft.py --config configs/sft_v3_checked_chat.yaml --dry-run passed; generated v3 train JSONL has 11706/11706 strict-verifier-valid completions.",
-        "2026-06-15 remote train: AutoDL tmux session game24-sft-v3-checked-chat started configs/sft_v3_checked_chat.yaml; observed training at step 57/4392 with checkpoint-50 written and GPU active."
+        "2026-06-15 remote train: AutoDL tmux session game24-sft-v3-checked-chat started configs/sft_v3_checked_chat.yaml; observed training at step 57/4392 with checkpoint-50 written and GPU active.",
+        "2026-06-15 baseline-format v2 full finetune backup: scripts/experiments/run_rollback_sft_experiment.py used --mode train on prebuilt dataset data/processed/experiments/game24-baseline-format-v2-qwen-answer-train.jsonl (35324 records, 1011 unique train multisets, 32355 rollback records, validation overlap 0), Qwen/Qwen2.5-1.5B-Instruct, training_mode=full, prompt_style=qwen_chat, max_steps=400; AutoDL eval summary outputs/experiments/baseline_format_v2_full/eval/summary.json reports checkpoint-400 and final both at 51/136=37.50% solve_rate, format_rate=38.97%, valid_expr_rate=38.24%."
       ],
       "notes": [
         "Audit order is intentional: evaluation code first, then data samples/distribution, then training code/generation/checkpoint behavior.",

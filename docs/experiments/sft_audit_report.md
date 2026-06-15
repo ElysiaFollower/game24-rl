@@ -224,3 +224,53 @@ multi-candidate traces, long rollback traces, full finetuning, and aggressive
 learning-rate changes. These remain possible later, but fixed trace is the next
 smallest experiment that can distinguish "needs clearer state supervision" from
 "still has a deeper training/data issue."
+
+## 2026-06-15 Update: Baseline-Format v2 Full Finetune Checkpoint
+
+This run is the current best reproducible SFT backup result in this repository:
+`51 / 136 = 37.50%` validation solve rate. It is not yet acceptable as the
+target result, but it is a useful checkpoint because it combines the strongest
+teacher data seen so far with full finetuning instead of LoRA.
+
+Method:
+
+- Script: `scripts/experiments/run_rollback_sft_experiment.py`.
+- Mode: `--mode train`, followed by `--mode eval`; dataset was prebuilt, so the
+  expensive rollback-data builder was not rerun.
+- Model: `Qwen/Qwen2.5-1.5B-Instruct`.
+- Training mode: `--training-mode full`, using Transformers `Trainer` with
+  prompt masking and `optim=adamw_torch`.
+- Dataset:
+  `data/processed/experiments/game24-baseline-format-v2-qwen-answer-train.jsonl`.
+- Dataset summary:
+  - records: `35324`
+  - unique train multisets: `1011`
+  - rollback records: `32355`
+  - validation overlap: `0`
+  - prompt style: `qwen_chat`
+- Main training parameters: `max_steps=400`, `save_steps=200`,
+  `learning_rate=5e-5`, `max_length=1024`, `max_new_tokens=1024`,
+  `eval_batch_size=4`.
+- AutoDL tmux session: `game24-baseline-v2-full`.
+- Run dir: `outputs/experiments/baseline_format_v2_full`.
+- Eval summary:
+  `outputs/experiments/baseline_format_v2_full/eval/summary.json`.
+
+Validation result:
+
+| Checkpoint | Solve rate | Format rate | Valid expression rate |
+|---|---:|---:|---:|
+| `checkpoint-400` | `51 / 136` = `37.50%` | `38.97%` | `38.24%` |
+| `final` | `51 / 136` = `37.50%` | `38.97%` | `38.24%` |
+
+Interpretation:
+
+- This is better than the previous SFT v2 final result
+  (`42 / 136 = 30.88%`), but still far below the reference baseline target.
+- The low `format_rate` and `valid_expr_rate` show that the dominant remaining
+  failure is not only arithmetic search. Long search/rollback traces still
+  frequently fail to close or satisfy the repository answer contract.
+- The result supports continuing baseline-aligned work, but the next iteration
+  should inspect raw outputs before changing the objective: likely candidates
+  are prompt/format closure, generation length, data formatting, and differences
+  from the reference baseline's training recipe.
