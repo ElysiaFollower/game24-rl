@@ -19,6 +19,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from game24_rl.data_gen import (  # noqa: E402
+    PROMPT_STYLE_QWEN_CHAT,
     PROMPT_STYLE_QWEN_CHAT_SEARCH,
     format_prompt,
 )
@@ -68,6 +69,11 @@ def main() -> None:
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--eval-batch-size", type=int, default=4)
+    parser.add_argument(
+        "--prompt-style",
+        choices=[PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH],
+        default=PROMPT_STYLE_QWEN_CHAT_SEARCH,
+    )
     parser.add_argument(
         "--training-mode",
         choices=["lora", "full"],
@@ -136,12 +142,12 @@ def build_dataset(args: argparse.Namespace) -> None:
                         "target": 24,
                         "prompt": format_prompt(
                             prompt_numbers,
-                            prompt_style=PROMPT_STYLE_QWEN_CHAT_SEARCH,
+                            prompt_style=args.prompt_style,
                         ),
                         "completion": completion,
                         "answer": expression,
                         "trace_type": "rollback_search",
-                        "prompt_style": PROMPT_STYLE_QWEN_CHAT_SEARCH,
+                        "prompt_style": args.prompt_style,
                         "source": "temporary_rollback_experiment",
                     }
                 )
@@ -528,6 +534,7 @@ def evaluate(args: argparse.Namespace) -> None:
             decoding=decoding,
             training_mode=args.training_mode,
             batch_size=args.eval_batch_size,
+            prompt_style=args.prompt_style,
         )
         report = evaluate_raw_outputs_file(
             raw_outputs_path=raw_outputs,
@@ -537,7 +544,7 @@ def evaluate(args: argparse.Namespace) -> None:
             split_manifest=args.manifest,
             split=args.eval_split,
             decoding=decoding,
-            generation_prompt_style=PROMPT_STYLE_QWEN_CHAT_SEARCH,
+            generation_prompt_style=args.prompt_style,
         )
         rows.append({"checkpoint": checkpoint.name, "metrics": report["metrics"]})
         print(json.dumps(rows[-1], indent=2, sort_keys=True))
@@ -558,6 +565,7 @@ def generate_checkpoint_outputs(
     decoding: DecodingConfig,
     training_mode: str,
     batch_size: int,
+    prompt_style: str,
 ) -> None:
     """Generates strict-eval raw outputs for LoRA or full checkpoints."""
 
@@ -595,7 +603,7 @@ def generate_checkpoint_outputs(
         prompts = [
             format_prompt(
                 record["numbers"],
-                prompt_style=PROMPT_STYLE_QWEN_CHAT_SEARCH,
+                prompt_style=prompt_style,
             )
             for record in batch
         ]
