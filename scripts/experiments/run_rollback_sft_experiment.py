@@ -398,7 +398,7 @@ def train(args: argparse.Namespace) -> None:
             seed=args.seed,
             bf16=True,
             report_to=["none"],
-            optim="adamw_hf",
+            optim="adamw_torch",
             weight_decay=0.01,
             warmup_ratio=0.03,
             lr_scheduler_type="cosine",
