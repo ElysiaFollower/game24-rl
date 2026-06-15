@@ -178,3 +178,49 @@ is rollback/search traces rather than chat framing, target-check statements, or
 record count. If v3 remains low, the next evidence-based step is to generate a
 repo-native rollback/search-trace dataset while preserving the current verifier
 and answer contract.
+
+## 2026-06-15 Update: Fixed State-Trace Experiment
+
+After v3 and converted baseline-format experiments remained below the expected
+baseline order of magnitude, the current working interpretation changed from
+"likely hidden training pipeline bug" to "likely teacher/data design bottleneck,
+with no core pipeline bug found yet."
+
+Evidence behind this interpretation:
+
+- One-sample and 16-sample probes used the same `train_sft.py`/TRL/LoRA
+  save-load/eval path and overfit successfully, so there is no current evidence
+  for a fatal completion mask, checkpoint, or eval slicing bug in the main path.
+- Converted baseline `format_v2` data was stronger than converted `format_v1`
+  under this repo's prompt and answer contract, showing that explicit search or
+  state information helps.
+- Long rollback/search traces also introduced many answer-contract failures,
+  suggesting that they can disrupt final `<answer>` closure for this setup.
+- Original short-success traces kept format stable but often produced
+  correct-number wrong-value answers, suggesting that the model learned output
+  shape and local arithmetic templates more than reliable state progression.
+
+Decision: run the next SFT exploration with a deterministic single-solution
+state-transition trace:
+
+```text
+<think>
+<s0> 5 5 5 9
+<s1> 5 + 5 = 10 | left: 10 5 9
+<s2> 5 + 9 = 14 | left: 10 14
+<s3> 10 + 14 = 24 | left: 24
+</think>
+<answer>((5 + 5) + (5 + 9))</answer>
+```
+
+Assumption: for a small model on a narrow task, a low-entropy task-specific
+grammar may be easier to learn than broad natural-language search. The fixed
+trace keeps useful intermediate state supervision while deferring rollback and
+multi-candidate search until the model demonstrates basic state-update and
+answer-closure competence.
+
+Deferred alternatives: GRPO, verifier relaxation, answer-contract changes,
+multi-candidate traces, long rollback traces, full finetuning, and aggressive
+learning-rate changes. These remain possible later, but fixed trace is the next
+smallest experiment that can distinguish "needs clearer state supervision" from
+"still has a deeper training/data issue."

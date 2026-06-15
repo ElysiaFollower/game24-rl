@@ -9,9 +9,9 @@
 
 - 当前功能项：`M2-sft-audit-and-repair`
 - 当前任务计划：`plans/active/20260615-sft-audit-and-repair.md`
-- 当前模式：高自治执行；最终训练跑起来后可结束会话。
-- 背景：SFT v2 修复 prompt/completion 边界和 stale JSONL 后，final validation 仍只有 `42/136 = 30.88%`，format/valid expression 为 100%，因此继续作为低分审计与修复任务处理。
-- 下一步最佳动作：同步当前修复到 AutoDL，启动 `configs/sft_v3_checked_chat.yaml` 训练，并观察前几条日志确认正常运行。
+- 当前模式：高自治执行；负责人正在对实验路线做强把关。
+- 背景：SFT v2/v3 和 baseline-converted experiments 均低于预期；小样本 overfit 未发现核心训练链路 bug，当前主假设转为 SFT teacher/data design bottleneck。
+- 下一步最佳动作：等待 AutoDL 上 `game24-fixed-trace-v1` 短实验完成，读取 `outputs/experiments/fixed_trace_v1_lora/eval/summary.json` 和 raw outputs，判断 fixed single-path state trace 是否改善 format/solve rate。
 
 ## 状态约定
 
@@ -60,3 +60,81 @@
 - Run dir: `outputs/sft_v1/qwen25_15b_lora_sft_v3_checked_chat`.
 - Log file: `outputs/sft_v1/qwen25_15b_lora_sft_v3_checked_chat/logs/train-20260615-011937.log`.
 - Observed normal progress: tokenization completed, trainer reached about `57/4392` steps, `checkpoint-50` exists, GPU active around `6065 MiB / 49140 MiB` and `30%` utilization.
+
+### 2026-06-15 - Fixed single-path trace experiment started
+
+- Decision recorded: `harness/decisions.md` entry "先训练固定单路径状态转移 trace".
+- Audit report updated: `docs/experiments/sft_audit_report.md` section "2026-06-15 Update: Fixed State-Trace Experiment".
+- Experimental script: `scripts/experiments/run_fixed_trace_sft_experiment.py`.
+- Local verification passed: `./init.sh`; `python -m compileall src scripts`; `ruff check src scripts tests`; `ruff format --check src scripts tests configs`; focused pytest 38 tests; fixed-trace build smoke with 16 strict-verifier-valid records.
+- Remote build passed on AutoDL: `data/processed/experiments/fixed_trace_v1_train.jsonl` has `1089` records, `1089` unique train puzzles, one fixed correct path per puzzle, 7 completion lines each.
+- Remote tmux session: `game24-fixed-trace-v1`.
+- Run dir: `outputs/experiments/fixed_trace_v1_lora`.
+- Log file: `outputs/experiments/fixed_trace_v1_lora/logs/run-20260615-fixed-trace-v1.log`.
+- Launch command parameters: `max_steps=800`, `save_steps=200`, `learning_rate=1e-4`, `max_length=512`, `max_new_tokens=256`, `eval_checkpoints=all`, prompt style `qwen_chat`, trace type `fixed_single_path_state_trace_v1`.
+- Observed normal progress: data generation, model load, EOS addition and tokenization completed; trainer reached early steps (`5/800` observed) with GPU around `6063 MiB / 49140 MiB` and `25%` utilization.
+
+### 2026-06-15 - Parallel higher-LR fixed-trace probe started
+
+- Motivation: GPU/CPU were underutilized by a single LoRA run; run a small parallel probe to test whether stronger LoRA training intensity improves fixed-trace learning speed.
+- Experiment: same fixed single-path state-trace data and script as `fixed_trace_v1_lora`, but `learning_rate=3e-4`, `max_steps=400`, `save_steps=200`.
+- Remote tmux session: `game24-fixed-trace-v1-lr3e4`.
+- Run dir: `outputs/experiments/fixed_trace_v1_lora_lr3e4`.
+- Logs: `outputs/experiments/fixed_trace_v1_lora_lr3e4/logs/train-20260615-fixed-trace-v1-lr3e4.log` and `outputs/experiments/fixed_trace_v1_lora_lr3e4/logs/eval-20260615-fixed-trace-v1-lr3e4.log`.
+- Observed normal progress: second model loaded, training reached early steps (`18/400` observed). With both runs active, GPU was around `12128 MiB / 49140 MiB` and `84%` utilization.
+
+### 2026-06-15 - Fixed-trace probe completed
+
+- Main run `fixed_trace_v1_lora` finished. Final validation:
+  - `checkpoint-200`: `14/136 = 10.29%`
+  - `checkpoint-400`: `13/136 = 9.56%`
+  - `checkpoint-600`: `20/136 = 14.71%`
+  - `checkpoint-800`: `21/136 = 15.44%`
+  - `final`: `21/136 = 15.44%`
+- Main run failure mix at final: `120` wrong_value, `2` wrong_numbers, `14` ok.
+- Higher-LR probe `fixed_trace_v1_lora_lr3e4` finished. Final validation:
+  - `checkpoint-200`: `15/136 = 11.03%`
+  - `checkpoint-400`: `19/136 = 13.97%`
+  - `final`: `19/136 = 13.97%`
+- Higher-LR probe failure mix at final: `104` wrong_value, `8` wrong_numbers, `4` syntax_error:unmatched ')', `19` ok.
+- Interpretation: fixed single-path trace did not recover the expected baseline order of magnitude, and stronger LR did not improve final solve rate. Current evidence still points to a teacher/design limitation rather than a pure optimization-strength issue.
+- Artifact paths:
+  - `outputs/experiments/fixed_trace_v1_lora/eval/summary.json`
+  - `outputs/experiments/fixed_trace_v1_lora_lr3e4/eval/summary.json`
+
+### 2026-06-15 - Long high-LR fixed-trace run started
+
+- Motivation: validate the user's concern that the previous fixed-trace probes
+  were too short and too conservative to test the assumption fairly.
+- Experiment: fixed single-path state trace, LoRA, `learning_rate=1e-3`,
+  `max_steps=3000`, `save_steps=500`, `max_length=512`, `max_new_tokens=256`.
+- TensorBoard enabled with `--report-to tensorboard`.
+- Remote tmux session: `game24-fixed-trace-v1-lr1e3-long`.
+- Run dir: `outputs/experiments/fixed_trace_v1_lora_lr1e3_long`.
+- Train log: `outputs/experiments/fixed_trace_v1_lora_lr1e3_long/logs/train-20260615-fixed-trace-v1-lr1e3-long.log`.
+- TensorBoard event file exists under `outputs/experiments/fixed_trace_v1_lora_lr1e3_long/runs/`.
+- Observed normal progress: model loaded and training reached about `129/3000`; GPU around `6067 MiB / 49140 MiB` and `24%` utilization.
+- Estimated duration from launch: roughly `90-100` minutes including automatic evaluation.
+
+### 2026-06-15 - Baseline gap analysis documented
+
+- Document: `docs/experiments/baseline_gap_analysis.md`.
+- Main findings:
+  - LLM4Game24 uses full fine-tuning, while this repo has used LoRA.
+  - LLM4Game24 format-v1/v2 have about `45k` records and usually `33-36`
+    records per puzzle; current fixed trace has `1089` records, one per puzzle.
+  - LLM4Game24 format-v2 is a compressed DFS/search-tree trace with rollback,
+    not a single success path.
+  - LLM4Game24 selects best checkpoint by eval loss; this repo mostly evaluates
+    saved checkpoints after training.
+  - Larger max length/generation budget matters if moving to search traces.
+
+### 2026-06-15 - Multi-path/search-trace solver idea recorded
+
+- Decision recorded in `harness/decisions.md`.
+- Rationale: current solver is fast enough that full-path or search-tree export
+  is not the bottleneck; keeping only the first DFS solution is a teacher-data
+  design choice, not a compute requirement.
+- Intended use: generate controlled SFT ablations that compare first-path,
+  multiple-success-path, and compressed-search-trace data while keeping the
+  same split, strict verifier, and `<answer>...</answer>` contract.

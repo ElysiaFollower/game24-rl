@@ -13,7 +13,10 @@ from game24_rl.verifier import verify_answer
 
 PROMPT_STYLE_PLAIN = "plain"
 PROMPT_STYLE_QWEN_CHAT = "qwen_chat"
-SUPPORTED_PROMPT_STYLES = frozenset({PROMPT_STYLE_PLAIN, PROMPT_STYLE_QWEN_CHAT})
+PROMPT_STYLE_QWEN_CHAT_SEARCH = "qwen_chat_search_v1"
+SUPPORTED_PROMPT_STYLES = frozenset(
+    {PROMPT_STYLE_PLAIN, PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH}
+)
 
 TRACE_TYPE_SHORT_SUCCESS = "short_success"
 TRACE_TYPE_CHECKED_SUCCESS = "checked_success"
@@ -26,6 +29,22 @@ _QWEN_CHAT_SYSTEM_PROMPT = (
     "and /, and use each provided number exactly once. Output concise "
     "reasoning steps. End with exactly one final expression inside "
     "<answer>...</answer>."
+)
+
+_QWEN_CHAT_SEARCH_SYSTEM_PROMPT = (
+    "Play the 24-point game. Given four numbers, determine whether 24 is "
+    "reachable using +, -, *, and /. Use each provided number exactly once. "
+    "Output reasoning steps, one step per line. On the last line, output the "
+    "final expression inside <answer>...</answer>.\n\n"
+    "Example:\n"
+    "Input numbers: 10 1 12 3\n"
+    "Output:\n"
+    "<think>\n"
+    "(12) + (3) = 15, left: 15, 10, 1\n"
+    "(10) - (1) = 9, left: 9, 15\n"
+    "(15) + (9) = 24, left: 24\n"
+    "</think>\n"
+    "<answer>((12 + 3) + (10 - 1))</answer>"
 )
 
 
@@ -42,6 +61,12 @@ def format_prompt(
         return (
             f"<|im_start|>system\n{_QWEN_CHAT_SYSTEM_PROMPT}<|im_end|>\n"
             f"<|im_start|>user\n{joined}\n<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+    if prompt_style == PROMPT_STYLE_QWEN_CHAT_SEARCH:
+        return (
+            f"<|im_start|>system\n{_QWEN_CHAT_SEARCH_SYSTEM_PROMPT}<|im_end|>\n"
+            f"<|im_start|>user\nInput numbers: {joined}\n<|im_end|>\n"
             "<|im_start|>assistant\n"
         )
     return (
