@@ -313,6 +313,36 @@ def build_prompt_dataset_from_pool(
     return [by_id[prompt_id] for prompt_id in selected_ids]
 
 
+def select_prompt_ids_from_details(
+    details: list[dict[str, Any]],
+    *,
+    min_correct: int | None = None,
+    max_correct: int | None = None,
+    require_truncation: bool = False,
+) -> list[str]:
+    """Selects prompt ids from rollout details using simple group filters."""
+
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    for detail in details:
+        by_id.setdefault(str(detail["id"]), []).append(detail)
+
+    selected: list[str] = []
+    for prompt_id, group in by_id.items():
+        rewards = [float(item.get("reward", 0.0)) for item in group]
+        correct = sum(reward > 0 for reward in rewards)
+        if min_correct is not None and correct < min_correct:
+            continue
+        if max_correct is not None and correct > max_correct:
+            continue
+        if require_truncation and not any(
+            str(item.get("reason", "")) == TRUNCATION_REASON for item in group
+        ):
+            continue
+        selected.append(prompt_id)
+
+    return selected
+
+
 def _pool_gate_failures(
     *,
     gate: GrpoPoolGateConfig,

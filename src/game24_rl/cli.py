@@ -22,6 +22,7 @@ from game24_rl.grpo import (
     build_grpo_probe_metadata,
     build_prompt_dataset_from_pool,
     run_grpo_dry_run,
+    select_prompt_ids_from_details,
 )
 from game24_rl.rewards import reward_completions
 from game24_rl.train_sft import run_sft
@@ -309,6 +310,21 @@ def build_grpo_pool_main() -> None:
     parser.add_argument("--max-zero-std-group-rate", type=float, default=0.75)
     parser.add_argument("--min-correct-truncation-mixed", type=int, default=50)
     parser.add_argument("--max-all-wrong-rate", type=float, default=0.25)
+    parser.add_argument(
+        "--select-min-correct",
+        type=int,
+        help="Optional lower bound for selected positive samples per prompt group.",
+    )
+    parser.add_argument(
+        "--select-max-correct",
+        type=int,
+        help="Optional upper bound for selected positive samples per prompt group.",
+    )
+    parser.add_argument(
+        "--select-require-truncation",
+        action="store_true",
+        help="Select only groups with at least one answer-contract truncation.",
+    )
     args = parser.parse_args()
 
     gate = GrpoPoolGateConfig(
@@ -333,6 +349,31 @@ def build_grpo_pool_main() -> None:
         gate=gate,
         metadata=metadata,
     )
+    if (
+        args.select_min_correct is not None
+        or args.select_max_correct is not None
+        or args.select_require_truncation
+    ):
+        details = json.loads(Path(args.details).read_text(encoding="utf-8"))
+        selected_ids = select_prompt_ids_from_details(
+            details,
+            min_correct=args.select_min_correct,
+            max_correct=args.select_max_correct,
+            require_truncation=args.select_require_truncation,
+        )
+        output_path = Path(args.output)
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        payload["selected_prompt_ids"] = selected_ids
+        payload["selection_filter"] = {
+            "min_correct": args.select_min_correct,
+            "max_correct": args.select_max_correct,
+            "require_truncation": args.select_require_truncation,
+            "selected_count": len(selected_ids),
+        }
+        output_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(json.dumps(audit.as_dict(), indent=2, sort_keys=True))
     if not audit.passed:
         raise SystemExit(1)

@@ -14,6 +14,7 @@ from game24_rl.grpo import (
     audit_rollout_groups,
     build_grpo_probe_metadata,
     run_grpo_dry_run,
+    select_prompt_ids_from_details,
     write_pool_manifest,
 )
 
@@ -160,6 +161,23 @@ def test_build_grpo_peft_config_can_be_disabled() -> None:
     config = _build_grpo_peft_config(Namespace(peft_mode="none"))
 
     assert config is None
+
+
+def test_select_prompt_ids_from_details_filters_high_signal_groups() -> None:
+    details = (
+        _mixed_details(count=1)
+        + _all_correct_details(count=1)
+        + _all_wrong_details(count=1)
+    )
+
+    selected = select_prompt_ids_from_details(
+        details,
+        min_correct=1,
+        max_correct=1,
+        require_truncation=True,
+    )
+
+    assert selected == ["mixed-0"]
 
 
 def test_grpo_dry_run_writes_prompt_and_reward_artifacts(tmp_path: Path) -> None:
