@@ -18,7 +18,7 @@
 - Collaboration mode：高自治执行，关键边界升级；当前围绕 M3 GRPO pilot 做可执行设计和后续最小实现。
 - Development principles：研究原型 + Python library/CLI，Google Python Style 轻量执行。
 - 当前边界：不改主模型、split、answer contract、verifier 接受标准；conservative GRPO pilot 已授权。
-- 当前实验退出条件：设计已落地；下一步应实现 dry-run/compatibility probe，真实长 GRPO 前先 short pilot。
+- 当前实验退出条件：设计已落地；short probe 已验证 `beta=0.001`/`scale_rewards=none` 的 5-step LoRA 是当前最优，继续扩大前必须找到能优于 `114/136` 的新配置。
 
 ## 当前已验证状态
 
@@ -120,6 +120,7 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
   但 validation 结果为 `89/136 = 65.44%`，只保留原 SFT `79/110`
   successes，丢 `31`，新增 `10`；failure mix 为 `45` answer-contract 和
   `2` wrong-number。该配置不能长训。
+- Probe 结论补充：`lora_r16_beta001_none_10` validation `113/136 = 83.09%`，比 5-step 的 `114/136` 略差；`scale_rewards=group` 的 5-step 只有 `108/136 = 79.41%`，因此当前最优还是 `lora_r16_beta001_none_5`。
 
 ## 仍损坏或未验证
 

@@ -97,6 +97,13 @@
 - 否决方案：只报告 solve rate，不说明 generation budget；或无限放大生成预算来追求更高分。
 - 后续约束：如果怀疑 budget 影响结论，应对同一 checkpoint 做多预算评估，并同时报告 solve rate、format rate 和失败类型分布。
 
+### 2026-06-17 - short probe A/B
+
+- 决策：在 conservative GRPO pilot 下先做极小 A/B，而不是直接长训。当前最优 short probe 是 `beta=0.001 + scale_rewards=none + lr=1e-6` 的 5-step LoRA 版本，validation `114/136 = 83.82%`；同配置 10-step、`scale_rewards=group` 和 `lr=5e-7` 都更差。
+- 原因：这条 5-step none 分支在保留强 SFT 成功题的同时，新增题更多，且明显优于其他短 probe；继续加 steps 或切 group scaling 都没有带来收益。
+- 否决方案：立刻长训这个分支；继续扩 `beta0_none_25`；把 `group` 作为默认；只看训练 loss 不看 validation。
+- 后续约束：如果要继续探索，只能找更有信息量的新短 probe 或更稳的 active subset；任何长训前都必须先证明 validation 能超过 `114/136`。
+
 ### 2026-06-16 - 进入 conservative GRPO pilot
 
 - 决策：从 strong full fine-tuning SFT checkpoint `outputs/experiments/baseline_format_v2_full_5000_from800/final` 进入 conservative GRPO pilot 设计和实现阶段，目标是把 validation strict greedy accuracy 从 `110/136 = 80.88%` 推向 `90%+`，即至少 `123/136`。
