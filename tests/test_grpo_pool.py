@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from game24_rl.cli import _build_grpo_config_kwargs
 from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.grpo import (
     GRPO_POOL_SCHEMA_VERSION,
@@ -111,6 +112,47 @@ def test_build_grpo_probe_metadata_records_fail_fast_contract() -> None:
     assert metadata["mask_truncated_completions"] is False
     assert metadata["remove_unused_columns"] is False
     assert metadata["unsupported_fields"] == []
+
+
+def test_build_grpo_config_kwargs_skips_unsupported_optional_fields() -> None:
+    config, skipped = _build_grpo_config_kwargs(
+        supported_fields={
+            "bf16",
+            "beta",
+            "gradient_accumulation_steps",
+            "learning_rate",
+            "logging_steps",
+            "loss_type",
+            "mask_truncated_completions",
+            "max_completion_length",
+            "max_steps",
+            "num_generations",
+            "output_dir",
+            "per_device_train_batch_size",
+            "remove_unused_columns",
+            "report_to",
+            "save_steps",
+            "scale_rewards",
+            "top_p",
+        },
+        output_dir="out",
+        beta=0.0,
+        scale_rewards="none",
+        mask_truncated_completions=False,
+        remove_unused_columns=False,
+        max_completion_length=1024,
+        num_generations=4,
+        temperature=0.8,
+        top_p=0.95,
+        learning_rate=5e-6,
+        max_steps=25,
+        save_steps=25,
+        logging_steps=1,
+    )
+
+    assert "max_prompt_length" not in config
+    assert config["top_p"] == 0.95
+    assert skipped == {"temperature": 0.8}
 
 
 def test_grpo_dry_run_writes_prompt_and_reward_artifacts(tmp_path: Path) -> None:

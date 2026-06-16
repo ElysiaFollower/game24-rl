@@ -237,6 +237,8 @@ def train_grpo_main() -> None:
     parser.add_argument("--max-prompt-length", type=int, default=256)
     parser.add_argument("--max-completion-length", type=int, default=1024)
     parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--learning-rate", type=float, default=5e-6)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
@@ -414,25 +416,23 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
     )
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    config = GRPOConfig(
+    config_kwargs, skipped_config_kwargs = _build_grpo_config_kwargs(
+        supported_fields=set(getattr(GRPOConfig, "__dataclass_fields__", {})),
         output_dir=str(output_dir),
         beta=args.beta,
         scale_rewards=args.scale_rewards,
         mask_truncated_completions=args.mask_truncated_completions,
         remove_unused_columns=args.remove_unused_columns,
-        loss_type="dr_grpo",
-        max_prompt_length=args.max_prompt_length,
         max_completion_length=args.max_completion_length,
         num_generations=args.num_generations,
+        temperature=args.temperature,
+        top_p=args.top_p,
         learning_rate=args.learning_rate,
         max_steps=args.max_steps,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=4,
-        bf16=True,
-        report_to=["tensorboard"],
     )
+    config = GRPOConfig(**config_kwargs)
     metadata = {
         "schema_version": "game24-grpo-train-run-v1",
         "model_name_or_path": args.model_name_or_path,
@@ -447,6 +447,12 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         "remove_unused_columns": args.remove_unused_columns,
         "max_steps": args.max_steps,
         "num_generations": args.num_generations,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "max_prompt_length_requested": args.max_prompt_length,
+        "max_prompt_length_applied_by_trl": False,
+        "grpo_config_kwargs": config_kwargs,
+        "skipped_grpo_config_kwargs": skipped_config_kwargs,
     }
     (output_dir / "train-run-metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
@@ -467,3 +473,67 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         encoding="utf-8",
     )
     return metadata
+
+
+def _build_grpo_config_kwargs(
+    *,
+    supported_fields: set[str],
+    output_dir: str,
+    beta: float,
+    scale_rewards: str,
+    mask_truncated_completions: bool,
+    remove_unused_columns: bool,
+    max_completion_length: int,
+    num_generations: int,
+    temperature: float,
+    top_p: float,
+    learning_rate: float,
+    max_steps: int,
+    save_steps: int,
+    logging_steps: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Builds GRPOConfig kwargs for the installed TRL version.
+
+    TRL 1.6.0 no longer exposes ``max_prompt_length``. Prompts in this project
+    are short, so prompt limiting is recorded in metadata instead of being
+    forced through an unsupported config field.
+    """
+
+    required = {
+        "output_dir": output_dir,
+        "beta": beta,
+        "scale_rewards": scale_rewards,
+        "mask_truncated_completions": mask_truncated_completions,
+        "remove_unused_columns": remove_unused_columns,
+        "loss_type": "dr_grpo",
+        "max_completion_length": max_completion_length,
+        "num_generations": num_generations,
+        "learning_rate": learning_rate,
+        "max_steps": max_steps,
+        "save_steps": save_steps,
+        "logging_steps": logging_steps,
+        "per_device_train_batch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "bf16": True,
+        "report_to": ["tensorboard"],
+    }
+    optional = {
+        "temperature": temperature,
+        "top_p": top_p,
+    }
+
+    missing_required = sorted(set(required) - supported_fields)
+    if missing_required:
+        raise SystemExit(
+            "Installed TRL GRPOConfig does not support required fields: "
+            + ", ".join(missing_required)
+        )
+
+    config_kwargs = dict(required)
+    skipped = {}
+    for name, value in optional.items():
+        if name in supported_fields:
+            config_kwargs[name] = value
+        else:
+            skipped[name] = value
+    return config_kwargs, skipped
