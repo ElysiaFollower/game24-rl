@@ -81,11 +81,9 @@
 
 当前任务是 M3 conservative GRPO pilot。设计目标是把 strong SFT 的 validation
 strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已完成
-方案设计和最小安全 scaffold：reward v1、answer-close metrics、train-pool audit、
-GRPO dry-run、TRL compatibility probe metadata 和 focused tests。真实
-`GRPOTrainer` training 仍未启用，必须等 AutoDL compatibility probe 通过。
-Compatibility probe 会在缺少 TRL、缺少必要字段或 `GRPOConfig` 拒绝配置时 fail
-fast，并写出 resolved config。
+方案设计、最小安全 scaffold、AutoDL compatibility probe、train-pool audit 和一轮
+真实 short pilot。`beta=0.0`、`scale_rewards=none`、`25` step 配置已经跑通但
+严格验证降到 `89/136 = 65.44%`，触发 stop gate；不要扩大这个配置。
 
 ## 当前判断
 
@@ -117,11 +115,17 @@ fast，并写出 resolved config。
   zero-std `<=75%`，correct-vs-truncation mixed prompts `>=50`。
 - Pilot early success：`>110/136`，retention `>=108/110`，
   answer-contract failures `<26/136`，wrong-answer failures `<=3/136`。
+- AutoDL short pilot `grpo-short-pilot/beta0_none_25` 已完成，训练本身能跑通：
+  25 steps、约 `8m14s`、GPU 训练采样约 `87-98%` utilization / `31.1GB`。
+  但 validation 结果为 `89/136 = 65.44%`，只保留原 SFT `79/110`
+  successes，丢 `31`，新增 `10`；failure mix 为 `45` answer-contract 和
+  `2` wrong-number。该配置不能长训。
 
 ## 仍损坏或未验证
 
-- 当前本地有未提交改动：GRPO scaffold 实现、tests、pyproject console scripts，以及 harness evidence 更新。
-- 本地 compat probe 因未安装 `trl` fail-fast：`No module named 'trl'`。这符合设计；真正兼容性验证要在 AutoDL train env 跑。
+- 当前本地有未提交改动：harness/progress.md 和本 handoff 更新，用于记录
+  short pilot 结果。
+- 本地未安装 `trl`，真实 GRPO 训练/评估仍只能在 AutoDL train env 验证。
 - 本地 `scripts/audit_sft_dataset.py` 因本地缺少 `transformers` 未运行；已用 repo-local JSONL + strict verifier 做替代数据审计。
 - AutoDL 直连 GitHub 不稳定；同步需要代理公式。
 - AutoDL 当前 worktree 是 dirty，且包含一次为 rollout audit 直接同步过去的脚本；远端不可作为代码事实源。下次远端执行前，应先由本地提交/推送成为事实源，再在远端按 owner 确认的方式 stash/archive remote-only changes 后 `git pull --ff-only`。
@@ -134,13 +138,15 @@ fast，并写出 resolved config。
 - 进度状态：`M3-grpo-frontier` 是唯一 active feature；`M2-sft-audit-and-repair` 已 passing。
 - 归档状态：旧 `0002-sft-training-readiness` 和 `20260615-sft-audit-and-repair` 计划已移到 `plans/archive/`。
 - 临时工件：`data/processed/` 和 `outputs/` 是 ignored runtime artifacts，不应提交。
-- 训练状态：AutoDL 当前无 tmux 训练 session；GPU 空闲。
+- 训练状态：AutoDL 当前无 running train/eval command；最近一次 GPU 检查为
+  `0%` utilization、`0 MiB / 49140 MiB`。
 
 ## 下一步最佳动作
 
-下一步在 AutoDL train env 运行 `scripts/train_grpo.py --compat-probe`，确认 TRL
-字段支持；随后用真实 train-split rollout details 运行 `scripts/build_grpo_pool.py`
-验收 pool。两者通过后再接入真实 `GRPOTrainer` training。
+不要扩大 `beta0_none_25`。下一步应先诊断 destructive update：确认是否需要
+更低 learning rate / 更少 steps / `beta=0.001` reference KL / `scale_rewards=group`
+A/B / 更小且更稳定的 active subset；并考虑先跑 sampled-success targeted SFT 作为
+低成本 baseline。任何新 GRPO 训练都应先用 <=5 step probe，并立即评估 retention。
 
 ## 命令
 

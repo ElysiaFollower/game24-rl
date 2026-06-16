@@ -273,3 +273,34 @@
   failures already have correct sampled trajectories. Main risk is
   length/search-control because sampled completion p50/p95 both hit `1024` and
   answer-contract truncation remains common.
+
+### 2026-06-16 - GRPO short pilot beta0 none failed stop gate
+
+- Local fix commit: `48eede5 Fix GRPO config for TRL 1.6`; removed unsupported
+  `max_prompt_length` from `GRPOConfig` kwargs and records the requested prompt
+  limit in run metadata instead.
+- AutoDL run dir:
+  `/root/autodl-tmp/projects/grpo-short-pilot/beta0_none_25`.
+- Train command: `max_steps=25`, `num_generations=4`, `temperature=0.8`,
+  `top_p=0.95`, `max_completion_length=1024`, `learning_rate=5e-6`,
+  `beta=0.0`, `scale_rewards=none`,
+  `mask_truncated_completions=false`, `remove_unused_columns=false`,
+  `prompt_records=88`.
+- Training completed successfully in about `8m14s`; GPU samples during training
+  were around `87-98%` utilization and `31133 MiB / 49140 MiB`.
+- Strict validation eval completed on the same validation split and prompt
+  style as the SFT baseline. Result for both `checkpoint-25` and `final`:
+  `89/136 = 65.44%`, `format_rate=66.91%`,
+  `valid_expr_rate=65.44%`.
+- Baseline comparison: strong SFT final remains `110/136 = 80.88%`; GRPO short
+  pilot retained only `79/110` baseline successes, lost `31`, and added `10`
+  new successes.
+- Failure mix after GRPO: `45` answer-contract failures and `2` wrong-number
+  failures. Training logs show high truncation pressure:
+  mean `completions/clipped_ratio=0.34`, max `1.0`, final step `0.75`;
+  mean completion length `643.19`, final step `928.0`.
+- Decision: this exact config fails the early stop gate and must not be
+  expanded to long training. Next GRPO attempt should reduce destructive update
+  risk before spending more GPU, e.g. shorter/safer probe, lower LR, fewer
+  updates, smaller active subset, KL/reference beta probe, or targeted SFT
+  baseline first.
