@@ -18,7 +18,7 @@
 - Collaboration mode：高自治执行，关键边界升级；当前围绕 M3 GRPO pilot 做可执行设计和后续最小实现。
 - Development principles：研究原型 + Python library/CLI，Google Python Style 轻量执行。
 - 当前边界：不改主模型、split、answer contract、verifier 接受标准；conservative GRPO pilot 已授权。
-- 当前实验退出条件：设计已落地；short probe 已验证 `beta=0.001`/`scale_rewards=none` 的 5-step LoRA 是当前最优，继续扩大前必须找到能优于 `114/136` 的新配置。
+- 当前实验退出条件：设计已落地；short probe 已验证 `beta=0.001`/`scale_rewards=none` 的 5-step LoRA 是当前最优，filtered pool/len512/targeted SFT 都未超过 `114/136`。继续扩大前必须找到新的 GRPO reward 或采样路线。
 
 ## 当前已验证状态
 
@@ -121,6 +121,7 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
   successes，丢 `31`，新增 `10`；failure mix 为 `45` answer-contract 和
   `2` wrong-number。该配置不能长训。
 - Probe 结论补充：`lora_r16_beta001_none_10` validation `113/136 = 83.09%`，比 5-step 的 `114/136` 略差；`scale_rewards=group` 的 5-step 只有 `108/136 = 79.41%`，因此当前最优还是 `lora_r16_beta001_none_5`。
+- 新增负结果：filtered pool 的 5-step probe 与当前最佳同为 `114/136` 但未突破；filtered + `max_completion_length=512` 退到 `113/136`；targeted SFT full refresh 从 sampled success 训练 `50` step 后退到 `95/136`，retention 只有 `87/110`，不要继续这条 SFT refresh。
 
 ## 仍损坏或未验证
 

@@ -11,7 +11,7 @@
 - 当前任务计划：`plans/active/20260616-grpo-pilot-design.md`
 - 当前模式：高自治执行；进入 conservative GRPO pilot 设计和后续最小实现。
 - 背景：strong full fine-tuning SFT 已达到 validation `110/136 = 80.88%`；剩余 `26` 个 greedy 失败都是 answer-contract/truncation；rollout audit 证明多数 greedy 失败题在采样分布中已有正确轨迹。
-- 下一步最佳动作：当前最佳 short probe 仍是 `lora_r16_beta001_none_5` 的 `114/136 = 83.82%`；不要扩大 `beta0_none_25` 或 `lr=5e-7/group` 分支。若继续，只做更有信息量的短 probe 或按设计评估更稳定的 active subset，不直接长训。
+- 下一步最佳动作：当前最佳 short probe 仍是 `lora_r16_beta001_none_5` 的 `114/136 = 83.82%`；filtered pool 持平、len512 退化、targeted SFT refresh 明显破坏 retention。后续不要继续 SFT refresh 或扩大这些退化分支，优先找新的 GRPO reward/采样路线。
 
 ## 状态约定
 
