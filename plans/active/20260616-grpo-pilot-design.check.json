@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "plan": "plans/active/20260616-grpo-pilot-design.md",
+  "feature_id": "M3-grpo-frontier",
+  "anchors": [
+    {
+      "id": "design-doc-target",
+      "severity": "fail",
+      "reason": "GRPO pilot 必须有可执行设计，且 90%+ 目标必须落成具体 validation 门槛。",
+      "check": "path_contains",
+      "path": "docs/experiments/grpo_pilot_design_20260616.md",
+      "pattern": "123/136",
+      "suggest": "补充 GRPO pilot 设计文档，并明确 90%+ 等于 validation 至少 123/136。"
+    },
+    {
+      "id": "design-doc-reward",
+      "severity": "fail",
+      "reason": "Reward 是 RLVR 的核心边界，不能只留在口头讨论。",
+      "check": "path_contains",
+      "path": "docs/experiments/grpo_pilot_design_20260616.md",
+      "pattern": "奖励 v1",
+      "suggest": "在设计文档中写出奖励 v1 的分值、理由和不做格式奖励的原因。"
+    },
+    {
+      "id": "design-doc-monitoring",
+      "severity": "fail",
+      "reason": "GRPO 不能只看 reward；必须同步监控真实 solve rate、长度和 zero-std。",
+      "check": "path_contains",
+      "path": "docs/experiments/grpo_pilot_design_20260616.md",
+      "pattern": "answer_close_token_index",
+      "suggest": "在设计文档中补充 answer-close 指标、监控指标、停止条件和回滚门禁。"
+    },
+    {
+      "id": "train-pool-audit",
+      "severity": "fail",
+      "reason": "GRPO 长训前必须先证明 train pool 有足够 mixed signal。",
+      "check": "path_contains",
+      "path": "docs/experiments/grpo_pilot_design_20260616.md",
+      "pattern": "训练池验收",
+      "suggest": "在设计文档中补充 train-split active-difficulty pool 的验收门槛。"
+    },
+    {
+      "id": "feature-list-active",
+      "severity": "fail",
+      "reason": "WIP=1；进入 M3 后 feature list 必须把 M3 设为唯一 active。",
+      "check": "evidence_contains",
+      "feature_id": "M3-grpo-frontier",
+      "pattern": "GRPO pilot design active",
+      "suggest": "更新 harness/feature_list.json，把 M3-grpo-frontier 设为 active，并记录设计任务 evidence。"
+    },
+    {
+      "id": "decision-recorded",
+      "severity": "warn",
+      "reason": "进入 GRPO 是训练路线变化，应进入决策日志，便于后续 agent 恢复上下文。",
+      "check": "path_contains",
+      "path": "harness/decisions.md",
+      "pattern": "conservative GRPO pilot",
+      "suggest": "在 harness/decisions.md 记录进入 conservative GRPO pilot 的原因、否决方案和约束。"
+    }
+  ]
+}

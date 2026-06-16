@@ -98,17 +98,27 @@
       "area": "rl",
       "title": "GRPO frontier stage",
       "behavior": "从已过关 SFT checkpoint 启动 GRPO，用 strict verifier reward 尝试超过 SFT fallback。",
-      "status": "not_started",
+      "status": "active",
       "verification": [
+        "./scripts/harness-check.sh",
+        "python -m compileall src scripts",
         "SFT checkpoint evidence exists",
+        "docs/experiments/grpo_pilot_design_20260616.md records reward, train pool, monitoring, stop gates, and 90%+ threshold",
         "GRPO run logs reward_mean/reward_std/KL/length/format_rate/solve_rate",
         "eval_checkpoint.py 在 validation/test split 上复评"
       ],
-      "evidence": [],
+      "evidence": [
+        "2026-06-16 GRPO pilot design active: plans/active/20260616-grpo-pilot-design.md and .check.json created; docs/experiments/grpo_pilot_design_20260616.md sets 90%+ target as >=123/136 validation, reward v1 as strict correctness with small missing-answer penalty, active-difficulty train pool, monitoring metrics, and stop gates.",
+        "2026-06-16 GRPO pilot design verification: ./scripts/harness-check.sh passed with 0 warnings; python -m compileall src scripts passed.",
+        "2026-06-16 GRPO design review incorporated: docs/experiments/grpo_pilot_design_20260616.md now requires train-pool audit before long training, answer-close token metrics, wrong-answer stop monitoring, TRL compatibility probe for extra reward columns/remove_unused_columns/mask_truncated_completions, beta=0/0.001 probe instead of beta=0.02 default, and scale_rewards none/group short probe.",
+        "2026-06-16 GRPO design review verification: ./scripts/harness-check.sh passed with 0 warnings; python -m compileall src scripts passed.",
+        "2026-06-16 GRPO design consistency pass: reward text synchronized across design/progress/decisions as +1.0/-0.2/-0.1; train-pool audit gates quantified as size>=200, mixed>=25%, zero-std<=75%, correct-vs-truncation mixed>=50; early success gates quantified as >110/136, retention>=108/110, answer-contract failures<26/136, wrong-answer failures<=3/136."
+      ],
       "notes": [
         "GRPO 是冲击上限的核心阶段，但必须在 M2 达标后开始。",
         "需要重点防 reward hacking、长度崩塌和早期 peak 后退化。",
-        "GRPO should start with a conservative pilot from the strong SFT checkpoint; rollout audit shows reward variance but requires strict length/truncation monitoring."
+        "GRPO should start with a conservative pilot from the strong SFT checkpoint; rollout audit shows reward variance but requires strict length/truncation monitoring.",
+        "First implementation should add reward tests, train-pool builder with audit, answer-close metrics, GRPO dry-run/compatibility probe, then short AutoDL probes before any long run."
       ]
     },
     {
@@ -133,7 +143,7 @@
       "area": "training",
       "title": "SFT 严格审计、case study 和修复复训",
       "behavior": "对低准确率 SFT 进行评测代码、数据、训练代码和 baseline 差异审计；产出报告、case study、focused tests/diagnostics，修复确认的问题并启动新一轮 SFT。",
-      "status": "active",
+      "status": "passing",
       "verification": [
         "./scripts/harness-check.sh",
         "python -m compileall src scripts",
@@ -157,13 +167,13 @@
         "2026-06-16 strong full fine-tuning SFT: independent record docs/experiments/sft_full_finetune_search_trace_20260616.md; final run outputs/experiments/baseline_format_v2_full_5000_from800 continued from local checkpoint-800 to max_steps=5000 with cosine LR schedule and strict validation summary outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json reports checkpoint-4500 and final both at 110/136=80.88% solve_rate, format_rate=80.88%, valid_expr_rate=80.88%.",
         "2026-06-16 TensorBoard default: future experiments should use TensorBoard logging; scripts/experiments/run_rollback_sft_experiment.py defaults to --report-to tensorboard with override support, and configs/sft_v1.yaml plus configs/sft_v3_checked_chat.yaml set training.report_to=[tensorboard].",
         "2026-06-16 strong SFT analysis: pulled local metrics/eval artifacts; sparse trajectory is checkpoint-400 51/136=37.50%, checkpoint-800 70/136=51.47%, checkpoint-4500/final 110/136=80.88%; checkpoint-4500 and final raw greedy outputs are byte-identical for all 136 validation puzzles; remaining 26 failures are all answer_contract truncations with no <answer> block; docs/experiments/sft_full_finetune_search_trace_20260616.md records curve, failure analysis, and observability limits.",
-        "2026-06-16 GRPO rollout audit: scripts/experiments/audit_rollout_distribution.py sampled the strong SFT checkpoint; docs/experiments/grpo_rollout_audit_20260616.md records validation pilot pass@4=30/32 with 16/32 mixed groups and greedy-failure targeted pass@8=22/26 with 19/26 mixed groups, showing useful GRPO reward variance but severe length/truncation risk."
+        "2026-06-16 GRPO rollout audit: scripts/experiments/audit_rollout_distribution.py sampled the strong SFT checkpoint; docs/experiments/grpo_rollout_audit_20260616.md records validation pilot pass@4=30/32 with 16/32 mixed groups and greedy-failure targeted pass@8=22/26 with 19/26 mixed groups, showing useful GRPO reward variance but severe length/truncation risk.",
+        "2026-06-16 M2 closed: SFT audit and repair produced strong full fine-tuning result 110/136=80.88%, failure analysis, rollout audit, and archived active plan plans/archive/20260615-sft-audit-and-repair.md; current WIP moved to M3-grpo-frontier."
       ],
       "notes": [
         "Audit order is intentional: evaluation code first, then data samples/distribution, then training code/generation/checkpoint behavior.",
         "Allowed to compare against LLM4Game24 as reference baseline, but do not copy its code or loosen this repo strict verifier/reporting contract.",
-        "Current collaboration mode remains human-in-loop; stop for user confirmation before changing model, split, answer contract, verifier standard, or training route.",
-        "Next remote run: qwen25_15b_lora_sft_v3_checked_chat with prompt_style=qwen_chat and trace_type=checked_success; evaluate checkpoints with --prompt-style qwen_chat.",
+        "M2 is no longer active; strong full fine-tuning SFT is the warm start for M3.",
         "Future long SFT runs that require accuracy curves should set --save-total-limit > 1 and keep TensorBoard/raw eval artifacts."
       ]
     }

@@ -7,11 +7,11 @@
 
 ## 当前状态
 
-- 当前功能项：`M2-sft-audit-and-repair`
-- 当前任务计划：`plans/active/20260615-sft-audit-and-repair.md`
-- 当前模式：高自治执行；负责人正在对实验路线做强把关。
-- 背景：SFT v2/v3 和 baseline-converted experiments 均低于预期；小样本 overfit 未发现核心训练链路 bug，当前主假设转为 SFT teacher/data design bottleneck。
-- 下一步最佳动作：等待 AutoDL 上 `game24-fixed-trace-v1` 短实验完成，读取 `outputs/experiments/fixed_trace_v1_lora/eval/summary.json` 和 raw outputs，判断 fixed single-path state trace 是否改善 format/solve rate。
+- 当前功能项：`M3-grpo-frontier`
+- 当前任务计划：`plans/active/20260616-grpo-pilot-design.md`
+- 当前模式：高自治执行；进入 conservative GRPO pilot 设计和后续最小实现。
+- 背景：strong full fine-tuning SFT 已达到 validation `110/136 = 80.88%`；剩余 `26` 个 greedy 失败都是 answer-contract/truncation；rollout audit 证明多数 greedy 失败题在采样分布中已有正确轨迹。
+- 下一步最佳动作：按 `docs/experiments/grpo_pilot_design_20260616.md` 实现 reward v1、train-pool builder、GRPO dry-run/compatibility probe 和 focused tests；真实长 GRPO 前先跑 short pilot。
 
 ## 状态约定
 
@@ -21,6 +21,34 @@
 - `passing`：验证通过且 evidence 已记录。
 
 ## 近期证据
+
+### 2026-06-16 - Conservative GRPO pilot design active
+
+- 旧 active plan `plans/active/20260615-sft-audit-and-repair.md` 已归档到
+  `plans/archive/20260615-sft-audit-and-repair.md`。
+- 新 active plan：`plans/active/20260616-grpo-pilot-design.md`。
+- 新 active feature：`M3-grpo-frontier`；`M2-sft-audit-and-repair` 标记为
+  `passing`，因为 strong SFT、失败分析和 rollout audit 已满足进入 M3 的证据。
+- 设计文档：`docs/experiments/grpo_pilot_design_20260616.md`。
+- 目标：validation strict greedy `90%+`，即至少 `123/136`，当前基线为
+  `110/136`。
+- Reward v1：strict verifier success `+1.0`，missing/incomplete answer
+  `-0.2`，parseable wrong `-0.1`；不加独立格式奖励，不先加独立长度奖励。
+- 训练池：先在 train split 上重建 active-difficulty pool，优先 mixed-reward
+  prompts；硬门槛是 pool size `>=200`、mixed group rate `>=25%`、
+  zero-std `<=75%`、correct-vs-truncation mixed prompts `>=50`；不能用
+  validation prompts 训练后报告 validation 提升。
+- 监控门禁：greedy solve rate、format/valid rate、failure mix、completion
+  length、truncation rate、reward std、zero-std group rate 和 KL。
+- 本地验证：`./scripts/harness-check.sh` 通过，0 warnings；`python -m compileall src scripts` 通过。
+- Review 后修正：长训前必须先验收 train-split active pool；新增
+  `answer_close_token_index` 等 answer-close 指标；`beta` 不再默认 `0.02`，先 probe
+  `0/0.001`；`scale_rewards` 先做 `none/group` short probe；显式记录
+  `mask_truncated_completions` 和 `remove_unused_columns=False`。
+- Early success/stop gate 已量化：pilot 早期成功需 `>110/136`、retention
+  `>=108/110`、answer-contract failures `<26/136`、wrong-answer failures
+  `<=3/136`；若 TRL 不支持声明字段，compatibility probe 必须 fail fast。
+- Review 后验证：`./scripts/harness-check.sh` 通过，0 warnings；`python -m compileall src scripts` 通过。
 
 ### 2026-06-15 - SFT 审计、修复和 v3 复训准备
 
@@ -49,7 +77,7 @@
 
 - M1 solver/verifier/data split foundation 已 passing；验收数字为 1,820 total / 1,362 solvable / 458 unsolvable。
 - M2 training readiness 已实现并归档：配置解析、dry-run、checkpoint resume、strict eval artifacts、Miniconda/bootstrap、AutoDL 环境验证。
-- 当前不得进入 GRPO；GRPO 仍等待 SFT warm start 有可信高分后再开始。
+- M2 审计已收束：strong full fine-tuning SFT 达到 `110/136 = 80.88%`，并通过 rollout audit 证明可进入 M3 GRPO pilot。
 
 ### 2026-06-15 - SFT v3 remote training started
 

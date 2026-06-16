@@ -96,3 +96,10 @@
 - 原因：当前 strong SFT 的剩余失败全部是长 rollback/search trace 在 `1024` new-token budget 内没有输出 `<answer>`。这既可能低估了需要更长搜索的问题，也体现了项目对“不能靠无限枚举拿分”的约束。
 - 否决方案：只报告 solve rate，不说明 generation budget；或无限放大生成预算来追求更高分。
 - 后续约束：如果怀疑 budget 影响结论，应对同一 checkpoint 做多预算评估，并同时报告 solve rate、format rate 和失败类型分布。
+
+### 2026-06-16 - 进入 conservative GRPO pilot
+
+- 决策：从 strong full fine-tuning SFT checkpoint `outputs/experiments/baseline_format_v2_full_5000_from800/final` 进入 conservative GRPO pilot 设计和实现阶段，目标是把 validation strict greedy accuracy 从 `110/136 = 80.88%` 推向 `90%+`，即至少 `123/136`。
+- 原因：SFT 已达到强 fallback；剩余 `26` 个 validation greedy 失败全部是 answer-contract/truncation，rollout audit 显示 validation pilot pass@4 `30/32` 且 mixed groups `16/32`，greedy-failure targeted pass@8 `22/26` 且 mixed groups `19/26`。这说明模型采样分布里已有正确轨迹，GRPO 的目标是把及时收束的正确轨迹提升到 greedy 路径。
+- 否决方案：继续无边界拉长 SFT；直接提高 generation budget 抬分；从 base model 做 pure GRPO；先改 answer contract/verifier；使用格式或长度奖励作为主奖励。
+- 后续约束：reward 必须复用 strict verifier；第一版 reward 以 correctness 为主，missing/incomplete answer 为 `-0.2`，parseable wrong 为 `-0.1`；训练池优先 active-difficulty/mixed-reward train prompts，并在长训前验收 pool size、mixed group rate、zero-std 和 correct-vs-truncation mixed prompts；不能用 validation prompts 训练后再报告 validation 提升；监控必须包含 solve rate、format/valid rate、failure mix、answer-close token metrics、completion length、truncation rate、reward std、zero-std group rate 和 KL。
