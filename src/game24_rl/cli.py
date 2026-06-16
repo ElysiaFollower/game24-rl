@@ -20,8 +20,10 @@ from game24_rl.grpo import (
     GrpoPoolGateConfig,
     audit_rollout_details_file,
     build_grpo_probe_metadata,
+    build_prompt_dataset_from_pool,
     run_grpo_dry_run,
 )
+from game24_rl.rewards import reward_completions
 from game24_rl.train_sft import run_sft
 
 
@@ -226,6 +228,16 @@ def train_grpo_main() -> None:
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--compat-probe", action="store_true")
+    parser.add_argument("--train", action="store_true")
+    parser.add_argument("--model-name-or-path")
+    parser.add_argument("--pool-manifest")
+    parser.add_argument("--max-steps", type=int, default=25)
+    parser.add_argument("--save-steps", type=int, default=25)
+    parser.add_argument("--logging-steps", type=int, default=1)
+    parser.add_argument("--max-prompt-length", type=int, default=256)
+    parser.add_argument("--max-completion-length", type=int, default=1024)
+    parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--learning-rate", type=float, default=5e-6)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
     parser.add_argument(
@@ -258,9 +270,14 @@ def train_grpo_main() -> None:
             raise SystemExit(1)
         return
 
+    if args.train:
+        result = _run_real_grpo(args)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return
+
     raise SystemExit(
-        "Real GRPO training is intentionally not enabled yet. Run --dry-run "
-        "and --compat-probe first."
+        "Specify one of --dry-run, --compat-probe, or --train. Run --dry-run "
+        "and --compat-probe before --train."
     )
 
 
@@ -365,6 +382,87 @@ def _run_grpo_compat_probe(args: argparse.Namespace) -> dict[str, object]:
                 "loss_type": getattr(resolved_config, "loss_type", None),
             }
     (output_dir / "compat-probe.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return metadata
+
+
+def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
+    if not args.model_name_or_path:
+        raise SystemExit("--model-name-or-path is required for --train")
+    if not args.pool_manifest:
+        raise SystemExit("--pool-manifest is required for --train")
+
+    try:
+        from datasets import (  # type: ignore[import-not-found]  # pylint: disable=import-outside-toplevel
+            Dataset,
+        )
+        from trl import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            GRPOConfig,
+            GRPOTrainer,
+        )
+    except ImportError as exc:
+        raise SystemExit(f"GRPO training dependencies are unavailable: {exc}") from exc
+
+    prompt_records = build_prompt_dataset_from_pool(
+        manifest_path=args.manifest,
+        pool_manifest_path=args.pool_manifest,
+        split=args.split,
+        prompt_style=args.prompt_style,
+        limit=args.limit,
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    config = GRPOConfig(
+        output_dir=str(output_dir),
+        beta=args.beta,
+        scale_rewards=args.scale_rewards,
+        mask_truncated_completions=args.mask_truncated_completions,
+        remove_unused_columns=args.remove_unused_columns,
+        loss_type="dr_grpo",
+        max_prompt_length=args.max_prompt_length,
+        max_completion_length=args.max_completion_length,
+        num_generations=args.num_generations,
+        learning_rate=args.learning_rate,
+        max_steps=args.max_steps,
+        save_steps=args.save_steps,
+        logging_steps=args.logging_steps,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        bf16=True,
+        report_to=["tensorboard"],
+    )
+    metadata = {
+        "schema_version": "game24-grpo-train-run-v1",
+        "model_name_or_path": args.model_name_or_path,
+        "manifest": args.manifest,
+        "split": args.split,
+        "pool_manifest": args.pool_manifest,
+        "prompt_records": len(prompt_records),
+        "output_dir": str(output_dir),
+        "beta": args.beta,
+        "scale_rewards": args.scale_rewards,
+        "mask_truncated_completions": args.mask_truncated_completions,
+        "remove_unused_columns": args.remove_unused_columns,
+        "max_steps": args.max_steps,
+        "num_generations": args.num_generations,
+    }
+    (output_dir / "train-run-metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    trainer = GRPOTrainer(
+        model=args.model_name_or_path,
+        reward_funcs=reward_completions,
+        args=config,
+        train_dataset=Dataset.from_list(prompt_records),
+    )
+    trainer.train()
+    trainer.save_model(str(output_dir / "final"))
+    metadata["status"] = "complete"
+    (output_dir / "train-run-metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

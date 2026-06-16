@@ -284,6 +284,35 @@ def run_grpo_dry_run(
     return metadata
 
 
+def build_prompt_dataset_from_pool(
+    *,
+    manifest_path: str | Path,
+    pool_manifest_path: str | Path,
+    split: str = "train",
+    prompt_style: str = PROMPT_STYLE_QWEN_CHAT,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Builds prompt records selected by an accepted GRPO pool manifest."""
+
+    pool = json.loads(Path(pool_manifest_path).read_text(encoding="utf-8"))
+    audit = pool.get("audit", {})
+    if not audit.get("passed", False):
+        raise ValueError(f"pool manifest did not pass gates: {pool_manifest_path}")
+    selected_ids = list(pool.get("selected_prompt_ids", []))
+    if limit is not None:
+        selected_ids = selected_ids[:limit]
+    records = build_prompt_dataset(
+        manifest_path=manifest_path,
+        split=split,
+        prompt_style=prompt_style,
+    )
+    by_id = {record["id"]: record for record in records}
+    missing = [prompt_id for prompt_id in selected_ids if prompt_id not in by_id]
+    if missing:
+        raise ValueError(f"pool references prompt ids not in split: {missing[:5]}")
+    return [by_id[prompt_id] for prompt_id in selected_ids]
+
+
 def _pool_gate_failures(
     *,
     gate: GrpoPoolGateConfig,
