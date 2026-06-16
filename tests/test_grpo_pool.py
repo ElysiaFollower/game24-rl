@@ -144,6 +144,7 @@ def test_build_grpo_config_kwargs_skips_unsupported_optional_fields() -> None:
         remove_unused_columns=False,
         max_completion_length=1024,
         num_generations=4,
+        gradient_accumulation_steps=8,
         temperature=0.8,
         top_p=0.95,
         learning_rate=5e-6,
@@ -153,6 +154,7 @@ def test_build_grpo_config_kwargs_skips_unsupported_optional_fields() -> None:
     )
 
     assert "max_prompt_length" not in config
+    assert config["gradient_accumulation_steps"] == 8
     assert config["top_p"] == 0.95
     assert skipped == {"temperature": 0.8}
 

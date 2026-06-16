@@ -242,6 +242,7 @@ def train_grpo_main() -> None:
     parser.add_argument("--max-prompt-length", type=int, default=256)
     parser.add_argument("--max-completion-length", type=int, default=1024)
     parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--learning-rate", type=float, default=5e-6)
@@ -474,6 +475,7 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         remove_unused_columns=args.remove_unused_columns,
         max_completion_length=args.max_completion_length,
         num_generations=args.num_generations,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         temperature=args.temperature,
         top_p=args.top_p,
         learning_rate=args.learning_rate,
@@ -496,6 +498,7 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         "remove_unused_columns": args.remove_unused_columns,
         "max_steps": args.max_steps,
         "num_generations": args.num_generations,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "temperature": args.temperature,
         "top_p": args.top_p,
         "peft_mode": args.peft_mode,
@@ -558,6 +561,7 @@ def _build_grpo_config_kwargs(
     remove_unused_columns: bool,
     max_completion_length: int,
     num_generations: int,
+    gradient_accumulation_steps: int,
     temperature: float,
     top_p: float,
     learning_rate: float,
@@ -586,7 +590,7 @@ def _build_grpo_config_kwargs(
         "save_steps": save_steps,
         "logging_steps": logging_steps,
         "per_device_train_batch_size": 1,
-        "gradient_accumulation_steps": 4,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
         "bf16": True,
         "report_to": ["tensorboard"],
     }
