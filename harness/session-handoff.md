@@ -7,19 +7,18 @@
 
 ## 仓库状态
 
-- 分支：`main`；本次备案提交后将切到
-  `dev/baseline-accuracy-improvement` 继续对照 baseline 提分。
+- 分支：`dev/baseline-accuracy-improvement`。
 - 当前功能项：`M2-sft-audit-and-repair`
 - 当前 active plan：`plans/active/20260615-sft-audit-and-repair.md`
-- 当前本地状态：baseline-format v2 full finetune 的 `37.50%` 备案结果已记录到实验报告、进度和 feature evidence。
+- 当前本地状态：strong full fine-tuning SFT 的 `80.88%` 结果已记录；新增曲线、checkpoint 轨迹和失败样本分析。
 - 最新已推送代码 commit：本文件可能滞后于当前本地提交；以 `git log -1 --oneline` 为准。
 
 ## 当前模式
 
-- Collaboration mode：负责人正在对实验路线做强把关；当前只推进已确认的 fixed-trace 短实验。
+- Collaboration mode：负责人正在对实验路线做强把关；当前围绕 strong SFT 结果做可复现分析和后续路线判断。
 - Development principles：研究原型 + Python library/CLI，Google Python Style 轻量执行。
 - 当前边界：不改主模型、split、answer contract、verifier 接受标准，不进入 GRPO。
-- 当前实验退出条件：fixed-trace 短训练与高 LR probe 都已完成自动评估；结果可直接读取。
+- 当前实验退出条件：strong SFT 结果、曲线和失败分析可直接读取；下一步训练路线需负责人确认。
 
 ## 当前已验证状态
 
@@ -51,11 +50,31 @@
   `outputs/experiments/baseline_format_v2_full_5000_from800/final/`。
 - future SFT experiments should use TensorBoard logging by default; the 80.88%
   historical run only has Trainer state/log-derived metrics, not event files.
+- strong SFT analysis artifacts pulled locally:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/metrics/`,
+  `outputs/experiments/baseline_format_v2_full_5000_from800/eval/`, and
+  `outputs/experiments/baseline_format_v2_full_5000_from800/analysis/checkpoint_trajectory_and_failures.json`.
+- GRPO rollout audit report:
+  `docs/experiments/grpo_rollout_audit_20260616.md`.
+- GRPO rollout artifacts:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/rollout_audit/`.
+- Sparse strict-validation trajectory:
+  `checkpoint-400` `51/136=37.50%`, `checkpoint-800` `70/136=51.47%`,
+  `checkpoint-4500`/`final` `110/136=80.88%`.
+- `checkpoint-4500` and `final` raw greedy outputs are byte-identical for all
+  `136` validation puzzles; remaining `26` failures are all
+  answer-contract/truncation cases with no `<answer>` block.
+- Rollout audit found useful GRPO signal: validation pilot pass@4 `30/32` with
+  `16/32` mixed groups; targeted greedy-failure pass@8 `22/26` with `19/26`
+  mixed groups. Main risk is length/search-control because sampled completion
+  p50/p95 hit the generation budget.
 
 ## 当前任务
 
 Full fine-tuning search-trace SFT 已形成当前强结果 `110/136 = 80.88%`。
-当前任务是把配置、结果和必要脚本修复提交并 PR 到 `main`。
+当前任务是围绕该强结果补齐可复现证据、曲线分析和后续可观测性修复。
+GRPO 尚未启动；下一步应先确认 conservative GRPO pilot 的 reward、采样池和
+监控门禁。
 
 ## 当前判断
 
@@ -68,12 +87,20 @@ Full fine-tuning search-trace SFT 已形成当前强结果 `110/136 = 80.88%`。
 - longer full fine-tuning reached `80.88%` strict validation solve rate, so the
   decisive issue in the `400`-step run was undertraining rather than an inherent
   mismatch in the search-trace recipe.
+- `4500` 到 `final` 没有变化不是报告聚合 bug；raw outputs 完全相同，结合 cosine
+  LR 在 `4500` 已降到约 `1.30e-6`，更像 greedy 解码行为 plateau。
+- 当前剩余瓶颈不是格式正确后的算术错误，而是少数题目的 rollback/search trace
+  过长并耗尽 `1024` generation budget，没能输出 `<answer>`。
+- Sampling audit 支持进入 GRPO pilot：大多数 greedy 失败题在采样分布中已有
+  正确轨迹，RL 目标应是把这些正确且及时收束的轨迹提升到 greedy 路径。
+- GRPO pilot 必须防止 length reward hack 或搜索失控；不能只看 reward_mean。
 
 ## 仍损坏或未验证
 
-- 当前本地有未提交改动：`harness/decisions.md`、`harness/progress.md`、`harness/session-handoff.md`、`docs/experiments/sft_audit_report.md`、`scripts/experiments/`。
+- 当前本地有未提交改动：strong SFT 分析文档、harness 记录、metrics 导出脚本，以及 rollback 实验脚本的 `--save-total-limit` 参数。
 - 本地 `scripts/audit_sft_dataset.py` 因本地缺少 `transformers` 未运行；已用 repo-local JSONL + strict verifier 做替代数据审计。
 - AutoDL 直连 GitHub 不稳定；同步需要代理公式。
+- AutoDL 当前 worktree 是 dirty，且包含一次为 rollout audit 直接同步过去的脚本；远端不可作为代码事实源。下次远端执行前，应先由本地提交/推送成为事实源，再在远端按 owner 确认的方式 stash/archive remote-only changes 后 `git pull --ff-only`。
 - 远端同步前的旧 dirty worktree 已 stash：`autodl-before-sft-v3-sync-20260615-011851`。
 - `/tmp/LLM4Game24` 是临时外部 baseline clone，不属于本仓库。
 
@@ -83,13 +110,14 @@ Full fine-tuning search-trace SFT 已形成当前强结果 `110/136 = 80.88%`。
 - 进度状态：`M2-sft-audit-and-repair` 是唯一 active feature；`M2-first-pass-sft` 仍 blocked，等待 fixed-trace 结果。
 - 归档状态：旧 `0002-sft-training-readiness` 计划已移到 `plans/archive/`。
 - 临时工件：`data/processed/` 和 `outputs/` 是 ignored runtime artifacts，不应提交。
-- 训练状态：AutoDL 当前无 tmux 训练 session；GPU 空闲。主 run log 是 `outputs/experiments/fixed_trace_v1_lora/logs/run-20260615-fixed-trace-v1.log`，higher-LR logs 在 `outputs/experiments/fixed_trace_v1_lora_lr3e4/logs/`。
+- 训练状态：AutoDL 当前无 tmux 训练 session；GPU 空闲。
 
 ## 下一步最佳动作
 
-把 `dev/baseline-accuracy-improvement` 的记录、TensorBoard 默认配置和脚本修复
-PR 到 `main`。合并后，下一步可以基于 `80.88%` SFT checkpoint 讨论是否进入
-GRPO 或补充 test split 复评。
+基于 rollout audit 设计 conservative GRPO pilot：strict verifier correctness
+主奖励，轻微惩罚 missing answer/truncation，优先 mixed-reward prompts，监控
+greedy solve rate、pass@k、completion length、truncation rate、reward std 和
+zero-std group rate。
 
 ## 命令
 

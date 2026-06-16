@@ -196,3 +196,45 @@
   `--report-to`.
 - Config update: `configs/sft_v1.yaml` and `configs/sft_v3_checked_chat.yaml`
   now set `training.report_to: [tensorboard]`.
+
+### 2026-06-16 - Strong SFT curve and failure analysis
+
+- Pulled local analysis artifacts from AutoDL for the strong SFT run:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/metrics/` and
+  `outputs/experiments/baseline_format_v2_full_5000_from800/eval/`.
+- Sparse strict-validation trajectory:
+  `checkpoint-400` reached `51/136=37.50%`, `checkpoint-800` reached
+  `70/136=51.47%`, and `checkpoint-4500`/`final` both reached
+  `110/136=80.88%`.
+- Failure mix improved from mostly answer-contract failures at step `400`
+  (`83`) and step `800` (`62`) to `26` answer-contract failures and no
+  arithmetic/number failures at `4500`/`final`.
+- `checkpoint-4500` and `final` produced byte-identical raw greedy outputs for
+  all `136` validation puzzles; the equal metrics are therefore a real behavior
+  plateau under greedy decoding, not an aggregate reporting accident.
+- Case study shows the remaining failures are long rollback/search continuations
+  truncated before `</think><answer>...`; none contains an `<answer>` block.
+- Training metrics were exported from retained `trainer_state.json`; because
+  `save_total_limit=1`, dense checkpoint-wise accuracy cannot be recovered for
+  this historical run.
+- Observability fix: `scripts/export_training_metrics.py` now only records plots
+  that were actually generated, and
+  `scripts/experiments/run_rollback_sft_experiment.py` exposes
+  `--save-total-limit` for future long SFT runs.
+
+### 2026-06-16 - GRPO rollout audit
+
+- Added script: `scripts/experiments/audit_rollout_distribution.py`.
+- Report: `docs/experiments/grpo_rollout_audit_20260616.md`.
+- Artifacts:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/rollout_audit/`.
+- Validation pilot with `temperature=0.8`, `top_p=0.95`, `G=4`,
+  `max_new_tokens=1024` on 32 prompts: output solve rate `86/128=67.19%`,
+  pass@4 `30/32=93.75%`, mixed groups `16/32`.
+- Targeted audit on the `26` greedy validation failures with `G=8`,
+  `max_new_tokens=1024`: output solve rate `94/208=45.19%`, pass@8
+  `22/26=84.62%`, mixed groups `19/26`.
+- Interpretation: GRPO has useful group-level reward variance; most greedy
+  failures already have correct sampled trajectories. Main risk is
+  length/search-control because sampled completion p50/p95 both hit `1024` and
+  answer-contract truncation remains common.

@@ -101,6 +101,20 @@ Evaluation artifact:
 | `checkpoint-4500` | `110 / 136 = 80.88%` | `80.88%` | `80.88%` |
 | `final` | `110 / 136 = 80.88%` | `80.88%` | `80.88%` |
 
+## Checkpoint Trajectory
+
+The available strict validation points form this sparse trajectory:
+
+| Step | Run directory | Checkpoint | Solve rate | Format rate | Valid expression rate | Main remaining failure |
+|---:|---|---|---:|---:|---:|---|
+| `400` | `baseline_format_v2_full` | `checkpoint-400` | `51 / 136 = 37.50%` | `38.97%` | `38.24%` | `83` answer-contract failures |
+| `800` | `baseline_format_v2_full_continue800` | `checkpoint-800` | `70 / 136 = 51.47%` | `54.41%` | `54.41%` | `62` answer-contract failures |
+| `4500` | `baseline_format_v2_full_5000_from800` | `checkpoint-4500` | `110 / 136 = 80.88%` | `80.88%` | `80.88%` | `26` answer-contract failures |
+| `5000` | `baseline_format_v2_full_5000_from800` | `final` | `110 / 136 = 80.88%` | `80.88%` | `80.88%` | `26` answer-contract failures |
+
+Local analysis artifact:
+`outputs/experiments/baseline_format_v2_full_5000_from800/analysis/checkpoint_trajectory_and_failures.json`.
+
 ## Interpretation
 
 - The earlier `400`-step result was undertrained for this recipe.
@@ -108,8 +122,42 @@ Evaluation artifact:
   `80.88%`.
 - Format, valid-expression, and solve rates are identical because every
   format-valid output in this evaluation also passed strict solving.
+- The equal `checkpoint-4500` and `final` metrics are not only aggregate-level:
+  all `136 / 136` raw greedy validation outputs are byte-identical between the
+  two checkpoints. The plausible explanation is that cosine-decayed learning
+  rate was already very low by step `4500` (`1.30e-6` in the retained
+  Trainer history), so the final `500` steps did not cross any greedy decoding
+  decision boundary on this validation set.
+- At `4500` and `final`, the remaining `26` failures all fail the answer
+  contract and contain no `<answer>` block. Case-study samples show long
+  rollback/search continuations truncated by the `1024` new-token budget before
+  emitting `</think><answer>...`.
 - The current SFT model is strong enough to serve as the project fallback and as
   a credible warm start for the next optimization stage.
+
+## Generation Budget Interpretation
+
+The `max_new_tokens=1024` cap is an important evaluation choice, not a neutral
+implementation detail.
+
+For the current result, the cap makes the remaining `26` failures easy to
+interpret mechanically: the model keeps producing rollback/search steps and is
+truncated before it emits a complete `<answer>...</answer>` block. This does not
+prove that those puzzles are impossible for the model with a longer budget; it
+may be that some validation puzzles require longer search traces under this
+teacher format.
+
+At the same time, keeping a bounded generation budget is intentional. The target
+behavior is not exhaustive brute-force enumeration until a solution appears; the
+project wants a model that reaches a valid solution promptly under a declared
+decoding budget. Under this interpretation, truncation failures are legitimate
+failures of search control and answer closure, even if a larger budget might
+recover some cases.
+
+Future reports should therefore state `max_new_tokens` together with accuracy.
+If budget sensitivity becomes a research question, evaluate the same checkpoint
+under multiple budgets, for example `512`, `1024`, and `2048`, and report both
+solve rate and failure mix.
 
 ## Training Curve
 
@@ -134,7 +182,24 @@ Outputs:
 - `loss.svg`
 - `learning_rate.svg`
 
+Observed curve summary:
+
+- Retained scalar records: `450` log rows from step `10` to `4500`.
+- Window mean loss fell from about `0.0803` over steps `10..500` to about
+  `0.0635` over steps `4001..4500`.
+- Learning rate followed warmup plus cosine decay: about `4.80e-5` mean over
+  steps `501..1000`, `7.79e-6` over `3501..4000`, and `2.96e-6` over
+  `4001..4500`.
+
 Note: because `save_total_limit=1`, the retained `trainer_state.json` covers the
 latest retained checkpoint (`checkpoint-4500`). The final step metrics are still
 visible in the training log:
 `outputs/experiments/baseline_format_v2_full_5000_from800/logs/train-20260616-baseline-v2-full-5000-from800.log`.
+
+## Observability Follow-Up
+
+This run did not retain enough intermediate checkpoints for a dense accuracy
+curve. Future long SFT runs that may need checkpoint-wise validation should set
+`--save-total-limit` larger than `1` and keep TensorBoard enabled. The rollback
+experiment script now exposes `--save-total-limit` for this purpose while
+preserving the old default.

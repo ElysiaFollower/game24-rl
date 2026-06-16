@@ -48,36 +48,31 @@ def main() -> None:
 
     csv_path = output_dir / "training_metrics.csv"
     _write_csv(history, csv_path)
-    _write_svg(
-        history,
-        output_dir / "loss.svg",
-        y_key="loss",
-        title="Training Loss",
-        y_label="loss",
-    )
-    _write_svg(
-        history,
-        output_dir / "mean_token_accuracy.svg",
-        y_key="mean_token_accuracy",
-        title="Mean Token Accuracy",
-        y_label="accuracy",
-    )
-    _write_svg(
-        history,
-        output_dir / "learning_rate.svg",
-        y_key="learning_rate",
-        title="Learning Rate",
-        y_label="learning rate",
-    )
+    plots = []
+    for filename, y_key, title, y_label in [
+        ("loss.svg", "loss", "Training Loss", "loss"),
+        (
+            "mean_token_accuracy.svg",
+            "mean_token_accuracy",
+            "Mean Token Accuracy",
+            "accuracy",
+        ),
+        ("learning_rate.svg", "learning_rate", "Learning Rate", "learning rate"),
+    ]:
+        plot_path = output_dir / filename
+        if _write_svg(
+            history,
+            plot_path,
+            y_key=y_key,
+            title=title,
+            y_label=y_label,
+        ):
+            plots.append(str(plot_path))
     summary = {
         "state_path": str(state_path),
         "records": len(history),
         "csv_path": str(csv_path),
-        "plots": [
-            str(output_dir / "loss.svg"),
-            str(output_dir / "mean_token_accuracy.svg"),
-            str(output_dir / "learning_rate.svg"),
-        ],
+        "plots": plots,
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
@@ -137,14 +132,14 @@ def _write_svg(
     y_key: str,
     title: str,
     y_label: str,
-) -> None:
+) -> bool:
     points = [
         (float(record["step"]), float(record[y_key]))
         for record in history
         if "step" in record and y_key in record
     ]
     if not points:
-        return
+        return False
 
     width = 920
     height = 420
@@ -243,6 +238,7 @@ def _write_svg(
         ]
     )
     path.write_text("\n".join(elements) + "\n", encoding="utf-8")
+    return True
 
 
 def _range(values) -> tuple[float, float]:

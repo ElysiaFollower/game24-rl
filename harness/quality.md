@@ -27,6 +27,7 @@
 ## 维护队列
 
 - 远程训练前确认 public repo URL、推送状态，并解决 RTXpro6000 缺 python3-venv / pip 无法访问 PyPI / 缺训练栈的问题。
+- 远端机器只作为 execution worker：代码唯一事实源是本地仓库/GitHub 分支，远端只通过 `git clone`/`git pull --ff-only` 同步，训练日志、checkpoint 和中间数据只写 ignored artifact 路径。
 - 首次远程真实 SFT 前先跑 dry-run 和 small limit eval，避免直接长训暴露低级 pipeline bug。
 - M3 开始前补 GRPO reward 日志 schema 和 reward hacking 检查。
 - 阶段完成时归档已结束状态，精简 `harness/feature_list.json` 和 `progress.md`。

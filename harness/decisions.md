@@ -82,3 +82,17 @@
 - 决策过程：当前 fixed single-path 实验显示模型很容易学会格式，但泛化正确率仍低；LLM4Game24 的强 baseline 使用每题多条记录和 rollback/search trace，说明多路径/搜索过程信号可能是高分关键差异之一。用户指出“先搜全路径不代表全用”，这能同时支持 fixed path、多路径 SFT、search trace SFT 和后续 verifier/RL 方案。
 - 原因：把全路径/search trace 作为可复用中间数据，可以让我们做有控制的消融：第一条路径 vs 多条成功路径 vs 压缩搜索树，而不反复改 solver 主逻辑。
 - 后续约束：不改变主 split、strict verifier 或 `<answer>...</answer>` 契约；多路径样本仍必须按 puzzle multiset 隔离 split，不能让同一 puzzle 的不同路径跨 train/validation/test。
+
+### 2026-06-16 - 长训要保留更多 checkpoint
+
+- 决策：后续需要 checkpoint-wise 准确率曲线或失败分析的长训，将 `--save-total-limit` 显式设大于 `1`，不要只保留最后一个中间 checkpoint。
+- 原因：`save_total_limit=1` 会删除中间 checkpoint 和对应 trainer state，事后只能恢复稀疏轨迹，无法可靠回答“哪一段开始 plateau”。
+- 否决方案：继续默认只保留一个 checkpoint 来省磁盘，但牺牲实验诊断能力。
+- 后续约束：长训启动命令和实验记录必须写明 checkpoint 保留策略；需要曲线时同时保留 raw eval artifact。
+
+### 2026-06-16 - 报告准确率时必须声明 generation budget
+
+- 决策：SFT/GRPO 评估报告必须声明 `max_new_tokens`，并把 token 截断视为评测口径的一部分。
+- 原因：当前 strong SFT 的剩余失败全部是长 rollback/search trace 在 `1024` new-token budget 内没有输出 `<answer>`。这既可能低估了需要更长搜索的问题，也体现了项目对“不能靠无限枚举拿分”的约束。
+- 否决方案：只报告 solve rate，不说明 generation budget；或无限放大生成预算来追求更高分。
+- 后续约束：如果怀疑 budget 影响结论，应对同一 checkpoint 做多预算评估，并同时报告 solve rate、format rate 和失败类型分布。

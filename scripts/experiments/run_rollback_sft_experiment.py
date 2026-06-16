@@ -66,6 +66,16 @@ def main() -> None:
     parser.add_argument("--max-records", type=int)
     parser.add_argument("--max-steps", type=int, default=1600)
     parser.add_argument("--save-steps", type=int, default=400)
+    parser.add_argument(
+        "--save-total-limit",
+        type=int,
+        default=1,
+        help=(
+            "Maximum saved checkpoints to keep during full fine-tuning. "
+            "Use a larger value when later checkpoint-wise validation curves "
+            "are required."
+        ),
+    )
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--eval-batch-size", type=int, default=4)
@@ -420,7 +430,7 @@ def train(args: argparse.Namespace) -> None:
             eval_strategy="steps",
             eval_steps=args.save_steps,
             per_device_eval_batch_size=1,
-            save_total_limit=1,
+            save_total_limit=args.save_total_limit,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
