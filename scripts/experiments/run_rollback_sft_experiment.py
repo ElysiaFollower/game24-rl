@@ -70,6 +70,14 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--eval-batch-size", type=int, default=4)
     parser.add_argument(
+        "--report-to",
+        default="tensorboard",
+        help=(
+            "Comma-separated Trainer reporting integrations. Use 'none' to "
+            "disable reporting."
+        ),
+    )
+    parser.add_argument(
         "--prompt-style",
         choices=[PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH],
         default=PROMPT_STYLE_QWEN_CHAT_SEARCH,
@@ -403,7 +411,7 @@ def train(args: argparse.Namespace) -> None:
             logging_dir=str(run_dir / "logs"),
             seed=args.seed,
             bf16=True,
-            report_to=["none"],
+            report_to=parse_report_to(args.report_to),
             optim="adamw_torch",
             weight_decay=0.01,
             warmup_ratio=0.03,
@@ -448,7 +456,7 @@ def train(args: argparse.Namespace) -> None:
             logging_dir=str(run_dir / "logs"),
             seed=args.seed,
             bf16=True,
-            report_to=["none"],
+            report_to=parse_report_to(args.report_to),
             eos_token="<|im_end|>",
             completion_only_loss=True,
         )
@@ -506,6 +514,13 @@ def preprocess_full_sft_batch(
         model_inputs["attention_mask"].append(attention_mask)
         model_inputs["labels"].append(labels)
     return model_inputs
+
+
+def parse_report_to(value: str) -> list[str]:
+    """Parses comma-separated Trainer reporting integrations."""
+
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or ["none"]
 
 
 def evaluate(args: argparse.Namespace) -> None:

@@ -27,7 +27,7 @@ training:
   seed: 20260613
   bf16: true
   report_to:
-    - none
+    - tensorboard
 evaluation:
   do_sample: false
   max_new_tokens: 256

@@ -18,6 +18,7 @@ train = [
   "accelerate>=1.14,<2",
   "datasets>=5,<6",
   "peft>=0.19,<1",
+  "tensorboard>=2.20,<3",
   "torch>=2.8,<3",
   "transformers>=5.12,<6",
   "trl>=1.6,<2",

@@ -113,8 +113,13 @@ Evaluation artifact:
 
 ## Training Curve
 
-Trainer scalar history is stored in `trainer_state.json` for the saved
-checkpoint. Export plots with:
+This historical run did not write TensorBoard events because the experimental
+script still used `report_to=["none"]` at the time. Future runs should keep the
+default `--report-to tensorboard`, which writes TensorBoard event files under the
+run logging directory.
+
+For this run, Trainer scalar history is stored in `trainer_state.json` for the
+saved checkpoint. Export plots with:
 
 ```sh
 python scripts/export_training_metrics.py \

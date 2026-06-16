@@ -185,3 +185,14 @@
 - Interpretation: the `400`-step full fine-tuning result was undertrained; the
   current full SFT checkpoint is now a strong fallback and a credible warm start
   for later optimization.
+
+### 2026-06-16 - TensorBoard enabled for future experiments
+
+- Decision: future SFT experiments should write TensorBoard event files by
+  default, because they are easier to inspect and reuse in the course report than
+  ad hoc SVG exports.
+- Implementation: `scripts/experiments/run_rollback_sft_experiment.py` now
+  defaults to `--report-to tensorboard` and supports overriding integrations with
+  `--report-to`.
+- Config update: `configs/sft_v1.yaml` and `configs/sft_v3_checked_chat.yaml`
+  now set `training.report_to: [tensorboard]`.

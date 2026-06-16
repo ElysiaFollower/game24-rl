@@ -49,6 +49,8 @@
 - strong full fine-tuning artifacts：
   `outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json`，
   `outputs/experiments/baseline_format_v2_full_5000_from800/final/`。
+- future SFT experiments should use TensorBoard logging by default; the 80.88%
+  historical run only has Trainer state/log-derived metrics, not event files.
 
 ## 当前任务
 
@@ -85,9 +87,9 @@ Full fine-tuning search-trace SFT 已形成当前强结果 `110/136 = 80.88%`。
 
 ## 下一步最佳动作
 
-把 `dev/baseline-accuracy-improvement` 的记录和脚本修复 PR 到 `main`。
-合并后，下一步可以基于 `80.88%` SFT checkpoint 讨论是否进入 GRPO 或补充
-test split 复评。
+把 `dev/baseline-accuracy-improvement` 的记录、TensorBoard 默认配置和脚本修复
+PR 到 `main`。合并后，下一步可以基于 `80.88%` SFT checkpoint 讨论是否进入
+GRPO 或补充 test split 复评。
 
 ## 命令
 
