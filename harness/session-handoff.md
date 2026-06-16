@@ -18,7 +18,7 @@
 - Collaboration mode：高自治执行，关键边界升级；当前围绕 M3 GRPO pilot 做可执行设计和后续最小实现。
 - Development principles：研究原型 + Python library/CLI，Google Python Style 轻量执行。
 - 当前边界：不改主模型、split、answer contract、verifier 接受标准；conservative GRPO pilot 已授权。
-- 当前实验退出条件：设计已落地；当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512 和 targeted SFT refresh 都退化；继续扩大前必须验证新的 closure-aware reward 或更针对 long-search failures 的训练池。
+- 当前实验退出条件：设计已落地；当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512、targeted SFT refresh 和 close-bonus reward 都未超过 best；继续扩大前必须设计更针对 long-search failures 的训练池或更强但受控的搜索停止目标。
 
 ## 当前已验证状态
 
@@ -132,12 +132,15 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 - Remaining failures in the best run are still long rollback/search outputs
   truncated before any `<answer>` block. Next useful route is closure-aware
   reward or a more targeted train pool, not more blind step/beta expansion.
+- Close-bonus reward profile has been implemented behind `--reward-profile
+  close_bonus`, with default strict reward unchanged. Its first AutoDL probe
+  reached `115/136 = 84.56%`, retained `108/110`, and had `21` answer-contract
+  failures, so do not expand this exact profile.
 
 ## 仍损坏或未验证
 
-- 当前本地有未提交改动：close-bonus reward profile scaffold and harness
-  updates are in progress; commit after focused tests pass and remote probe
-  evidence is recorded.
+- 当前本地有未提交改动：harness updates recording close-bonus remote result;
+  commit after focused validation passes.
 - 本地未安装 `trl`，真实 GRPO 训练/评估仍只能在 AutoDL train env 验证。
 - 本地 `scripts/audit_sft_dataset.py` 因本地缺少 `transformers` 未运行；已用 repo-local JSONL + strict verifier 做替代数据审计。
 - AutoDL 直连 GitHub 不稳定；同步需要代理公式。
@@ -156,10 +159,11 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 
 ## 下一步最佳动作
 
-不要扩大 `beta0_none_25`、G8 10-step、`beta=0.002`、mixed pool 或 targeted SFT
-refresh。下一步应验证 close-bonus reward profile：默认 strict reward 不变，只在
-strict-valid 且早闭合 `<answer>` 的样本上加小 bonus，避免奖励短错答案。任何新
-GRPO 训练都应先用 <=5 step probe，并立即评估 retention 和 wrong-answer rate。
+不要扩大 `beta0_none_25`、G8 10-step、`beta=0.002`、mixed pool、targeted SFT
+refresh 或当前 close-bonus profile。下一步应围绕 best run 剩余 `20` 个
+answer-contract long-search failures 设计更针对的 train pool/rollout audit，或设计更强但
+不奖励短错答案的搜索停止目标。任何新 GRPO 训练都应先用 <=5 step probe，并立即评估
+retention 和 wrong-answer rate。
 
 ## 命令
 

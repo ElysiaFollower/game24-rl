@@ -11,7 +11,7 @@
 - 当前任务计划：`plans/active/20260616-grpo-pilot-design.md`
 - 当前模式：高自治执行；进入 conservative GRPO pilot 设计和后续最小实现。
 - 背景：strong full fine-tuning SFT 已达到 validation `110/136 = 80.88%`；剩余 `26` 个 greedy 失败都是 answer-contract/truncation；rollout audit 证明多数 greedy 失败题在采样分布中已有正确轨迹。
-- 下一步最佳动作：当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512 和 targeted SFT refresh 均退化；后续不要继续扩这些负分支，优先验证 closure-aware reward 或更针对剩余 long-search failures 的训练池。
+- 下一步最佳动作：当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512、targeted SFT refresh 和 close-bonus reward 均未超过 best；后续不要继续扩这些负分支，优先构建更针对剩余 long-search failures 的训练池或更强但受控的搜索停止目标。
 
 ## 状态约定
 
@@ -328,3 +328,8 @@
   Next useful route is a bounded closure-aware reward profile or a more targeted
   train pool for remaining long-search failures, not more blind step/beta/pool
   expansion.
+- Close-bonus reward profile probe:
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_closebonus_beta001_filtered_g8_lr5e7_5`
+  reached `115/136 = 84.56%`, retained `108/110`, added `7`, and had `21`
+  answer-contract failures. The small bonus for early correct answer closure did
+  not beat strict reward best, so do not expand this exact close-bonus profile.
