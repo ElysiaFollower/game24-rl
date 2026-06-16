@@ -49,6 +49,13 @@
   `>=108/110`、answer-contract failures `<26/136`、wrong-answer failures
   `<=3/136`；若 TRL 不支持声明字段，compatibility probe 必须 fail fast。
 - Review 后验证：`./scripts/harness-check.sh` 通过，0 warnings；`python -m compileall src scripts` 通过。
+- 实现进展：新增 `src/game24_rl/rewards.py`、`src/game24_rl/grpo.py`、
+  `scripts/train_grpo.py`、`scripts/build_grpo_pool.py`、`tests/test_grpo_rewards.py`
+  和 `tests/test_grpo_pool.py`。当前支持 reward scoring、answer-close metrics、
+  prompt-only dry-run、rollout details pool audit、TRL compatibility metadata 和
+  `GRPOConfig` 实例化 probe；
+  real GRPOTrainer training 仍故意禁用，等待 AutoDL compatibility probe。
+- 实现验证：`python -m compileall src scripts` 通过；`pytest tests/test_grpo_rewards.py tests/test_grpo_pool.py tests/test_training_pipeline.py` 18 tests 通过；`ruff check src scripts tests` 通过；`ruff format --check src scripts tests configs` 通过；`./scripts/harness-check.sh` 通过；`pytest` 47 tests 通过。
 
 ### 2026-06-15 - SFT 审计、修复和 v3 复训准备
 
