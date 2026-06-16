@@ -166,3 +166,22 @@
   SFT v2 final `30.88%`, but it remains far below the reference baseline.
   Remaining work should compare raw failures and training/data differences
   against baseline before another major run.
+
+### 2026-06-16 - Strong full fine-tuning SFT result
+
+- Independent record:
+  `docs/experiments/sft_full_finetune_search_trace_20260616.md`.
+- Training chain: full fine-tuning continued from the local `400`-step checkpoint
+  to `800` steps, then from `checkpoint-800` to `5000` steps.
+- Final run dir:
+  `outputs/experiments/baseline_format_v2_full_5000_from800`.
+- Final training metrics: runtime about `1:28:22`, train loss `0.06988`,
+  Trainer eval loss `0.06184`.
+- Strict validation artifact:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json`.
+- Strict validation result: `checkpoint-4500` and `final` both reached
+  `110/136 = 80.88%` solve rate, with `format_rate=80.88%` and
+  `valid_expr_rate=80.88%`.
+- Interpretation: the `400`-step full fine-tuning result was undertrained; the
+  current full SFT checkpoint is now a strong fallback and a credible warm start
+  for later optimization.

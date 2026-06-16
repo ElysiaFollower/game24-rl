@@ -274,3 +274,15 @@ Interpretation:
   should inspect raw outputs before changing the objective: likely candidates
   are prompt/format closure, generation length, data formatting, and differences
   from the reference baseline's training recipe.
+
+## 2026-06-16 Update: Strong Full Fine-Tuning Result
+
+Longer full fine-tuning confirmed that the `400`-step result was undertrained for
+the search-trace SFT recipe. Continuing from the local full checkpoint chain to
+`5000` steps produced a strict validation solve rate of `110 / 136 = 80.88%`.
+
+Independent run record:
+`docs/experiments/sft_full_finetune_search_trace_20260616.md`.
+
+Evaluation artifact:
+`outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json`.

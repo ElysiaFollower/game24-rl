@@ -574,7 +574,8 @@ def generate_checkpoint_outputs(
 
     manifest = read_manifest(manifest_path)
     records = manifest["splits"][split]
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer_source = str(checkpoint) if training_mode == "full" else model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
