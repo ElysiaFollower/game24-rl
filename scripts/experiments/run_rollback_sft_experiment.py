@@ -66,9 +66,27 @@ def main() -> None:
     parser.add_argument("--max-records", type=int)
     parser.add_argument("--max-steps", type=int, default=1600)
     parser.add_argument("--save-steps", type=int, default=400)
+    parser.add_argument(
+        "--save-total-limit",
+        type=int,
+        default=1,
+        help=(
+            "Maximum saved checkpoints to keep during full fine-tuning. "
+            "Use a larger value when later checkpoint-wise validation curves "
+            "are required."
+        ),
+    )
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--eval-batch-size", type=int, default=4)
+    parser.add_argument(
+        "--report-to",
+        default="tensorboard",
+        help=(
+            "Comma-separated Trainer reporting integrations. Use 'none' to "
+            "disable reporting."
+        ),
+    )
     parser.add_argument(
         "--prompt-style",
         choices=[PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH],
@@ -403,7 +421,7 @@ def train(args: argparse.Namespace) -> None:
             logging_dir=str(run_dir / "logs"),
             seed=args.seed,
             bf16=True,
-            report_to=["none"],
+            report_to=parse_report_to(args.report_to),
             optim="adamw_torch",
             weight_decay=0.01,
             warmup_ratio=0.03,
@@ -412,7 +430,7 @@ def train(args: argparse.Namespace) -> None:
             eval_strategy="steps",
             eval_steps=args.save_steps,
             per_device_eval_batch_size=1,
-            save_total_limit=1,
+            save_total_limit=args.save_total_limit,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
@@ -448,7 +466,7 @@ def train(args: argparse.Namespace) -> None:
             logging_dir=str(run_dir / "logs"),
             seed=args.seed,
             bf16=True,
-            report_to=["none"],
+            report_to=parse_report_to(args.report_to),
             eos_token="<|im_end|>",
             completion_only_loss=True,
         )
@@ -506,6 +524,13 @@ def preprocess_full_sft_batch(
         model_inputs["attention_mask"].append(attention_mask)
         model_inputs["labels"].append(labels)
     return model_inputs
+
+
+def parse_report_to(value: str) -> list[str]:
+    """Parses comma-separated Trainer reporting integrations."""
+
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or ["none"]
 
 
 def evaluate(args: argparse.Namespace) -> None:
@@ -574,7 +599,8 @@ def generate_checkpoint_outputs(
 
     manifest = read_manifest(manifest_path)
     records = manifest["splits"][split]
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer_source = str(checkpoint) if training_mode == "full" else model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"

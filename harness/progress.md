@@ -138,3 +138,103 @@
 - Intended use: generate controlled SFT ablations that compare first-path,
   multiple-success-path, and compressed-search-trace data while keeping the
   same split, strict verifier, and `<answer>...</answer>` contract.
+
+### 2026-06-15 - Baseline-format v2 full finetune backup result
+
+- Purpose: create a stronger SFT backup by moving closer to the reference
+  baseline recipe while preserving this repository's split, strict verifier, and
+  `<answer>...</answer>` reported contract.
+- Script: `scripts/experiments/run_rollback_sft_experiment.py`.
+- Training command used `--mode train` on the already-built dataset, not
+  `--mode all`, to avoid rebuilding rollback traces.
+- Model: `Qwen/Qwen2.5-1.5B-Instruct`.
+- Training mode: full finetuning via Transformers `Trainer`, prompt masking,
+  `optim=adamw_torch`, `learning_rate=5e-5`, `max_steps=400`,
+  `save_steps=200`, `max_length=1024`, `max_new_tokens=1024`.
+- Dataset:
+  `data/processed/experiments/game24-baseline-format-v2-qwen-answer-train.jsonl`
+  with `35324` records, `1011` unique train multisets, `32355` rollback records,
+  and validation overlap `0`.
+- AutoDL session: `game24-baseline-v2-full`.
+- Run dir: `outputs/experiments/baseline_format_v2_full`.
+- Eval summary:
+  `outputs/experiments/baseline_format_v2_full/eval/summary.json`.
+- Result: `checkpoint-400` and `final` both reached `51/136 = 37.50%`
+  validation solve rate, with `format_rate=38.97%` and
+  `valid_expr_rate=38.24%`.
+- Interpretation: this is the best repo-native backup so far and improves over
+  SFT v2 final `30.88%`, but it remains far below the reference baseline.
+  Remaining work should compare raw failures and training/data differences
+  against baseline before another major run.
+
+### 2026-06-16 - Strong full fine-tuning SFT result
+
+- Independent record:
+  `docs/experiments/sft_full_finetune_search_trace_20260616.md`.
+- Training chain: full fine-tuning continued from the local `400`-step checkpoint
+  to `800` steps, then from `checkpoint-800` to `5000` steps.
+- Final run dir:
+  `outputs/experiments/baseline_format_v2_full_5000_from800`.
+- Final training metrics: runtime about `1:28:22`, train loss `0.06988`,
+  Trainer eval loss `0.06184`.
+- Strict validation artifact:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json`.
+- Strict validation result: `checkpoint-4500` and `final` both reached
+  `110/136 = 80.88%` solve rate, with `format_rate=80.88%` and
+  `valid_expr_rate=80.88%`.
+- Interpretation: the `400`-step full fine-tuning result was undertrained; the
+  current full SFT checkpoint is now a strong fallback and a credible warm start
+  for later optimization.
+
+### 2026-06-16 - TensorBoard enabled for future experiments
+
+- Decision: future SFT experiments should write TensorBoard event files by
+  default, because they are easier to inspect and reuse in the course report than
+  ad hoc SVG exports.
+- Implementation: `scripts/experiments/run_rollback_sft_experiment.py` now
+  defaults to `--report-to tensorboard` and supports overriding integrations with
+  `--report-to`.
+- Config update: `configs/sft_v1.yaml` and `configs/sft_v3_checked_chat.yaml`
+  now set `training.report_to: [tensorboard]`.
+
+### 2026-06-16 - Strong SFT curve and failure analysis
+
+- Pulled local analysis artifacts from AutoDL for the strong SFT run:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/metrics/` and
+  `outputs/experiments/baseline_format_v2_full_5000_from800/eval/`.
+- Sparse strict-validation trajectory:
+  `checkpoint-400` reached `51/136=37.50%`, `checkpoint-800` reached
+  `70/136=51.47%`, and `checkpoint-4500`/`final` both reached
+  `110/136=80.88%`.
+- Failure mix improved from mostly answer-contract failures at step `400`
+  (`83`) and step `800` (`62`) to `26` answer-contract failures and no
+  arithmetic/number failures at `4500`/`final`.
+- `checkpoint-4500` and `final` produced byte-identical raw greedy outputs for
+  all `136` validation puzzles; the equal metrics are therefore a real behavior
+  plateau under greedy decoding, not an aggregate reporting accident.
+- Case study shows the remaining failures are long rollback/search continuations
+  truncated before `</think><answer>...`; none contains an `<answer>` block.
+- Training metrics were exported from retained `trainer_state.json`; because
+  `save_total_limit=1`, dense checkpoint-wise accuracy cannot be recovered for
+  this historical run.
+- Observability fix: `scripts/export_training_metrics.py` now only records plots
+  that were actually generated, and
+  `scripts/experiments/run_rollback_sft_experiment.py` exposes
+  `--save-total-limit` for future long SFT runs.
+
+### 2026-06-16 - GRPO rollout audit
+
+- Added script: `scripts/experiments/audit_rollout_distribution.py`.
+- Report: `docs/experiments/grpo_rollout_audit_20260616.md`.
+- Artifacts:
+  `outputs/experiments/baseline_format_v2_full_5000_from800/rollout_audit/`.
+- Validation pilot with `temperature=0.8`, `top_p=0.95`, `G=4`,
+  `max_new_tokens=1024` on 32 prompts: output solve rate `86/128=67.19%`,
+  pass@4 `30/32=93.75%`, mixed groups `16/32`.
+- Targeted audit on the `26` greedy validation failures with `G=8`,
+  `max_new_tokens=1024`: output solve rate `94/208=45.19%`, pass@8
+  `22/26=84.62%`, mixed groups `19/26`.
+- Interpretation: GRPO has useful group-level reward variance; most greedy
+  failures already have correct sampled trajectories. Main risk is
+  length/search-control because sampled completion p50/p95 both hit `1024` and
+  answer-contract truncation remains common.

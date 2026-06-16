@@ -107,7 +107,8 @@
       "evidence": [],
       "notes": [
         "GRPO 是冲击上限的核心阶段，但必须在 M2 达标后开始。",
-        "需要重点防 reward hacking、长度崩塌和早期 peak 后退化。"
+        "需要重点防 reward hacking、长度崩塌和早期 peak 后退化。",
+        "GRPO should start with a conservative pilot from the strong SFT checkpoint; rollout audit shows reward variance but requires strict length/truncation monitoring."
       ]
     },
     {
@@ -151,13 +152,19 @@
         "2026-06-15 repair: trace_type and prompt_style now flow through data generation, training config, CLI, and evaluation report artifacts; configs/sft_v3_checked_chat.yaml created.",
         "2026-06-15 validation: python -m compileall src scripts passed; pytest tests/test_solver.py tests/test_verifier.py tests/test_data_gen.py tests/test_training_pipeline.py passed with 38 tests; ruff check src scripts tests and ruff format --check src scripts tests configs passed; pytest passed with 38 tests.",
         "2026-06-15 dry-run/data audit: python scripts/train_sft.py --config configs/sft_v3_checked_chat.yaml --dry-run passed; generated v3 train JSONL has 11706/11706 strict-verifier-valid completions.",
-        "2026-06-15 remote train: AutoDL tmux session game24-sft-v3-checked-chat started configs/sft_v3_checked_chat.yaml; observed training at step 57/4392 with checkpoint-50 written and GPU active."
+        "2026-06-15 remote train: AutoDL tmux session game24-sft-v3-checked-chat started configs/sft_v3_checked_chat.yaml; observed training at step 57/4392 with checkpoint-50 written and GPU active.",
+        "2026-06-15 baseline-format v2 full finetune backup: scripts/experiments/run_rollback_sft_experiment.py used --mode train on prebuilt dataset data/processed/experiments/game24-baseline-format-v2-qwen-answer-train.jsonl (35324 records, 1011 unique train multisets, 32355 rollback records, validation overlap 0), Qwen/Qwen2.5-1.5B-Instruct, training_mode=full, prompt_style=qwen_chat, max_steps=400; AutoDL eval summary outputs/experiments/baseline_format_v2_full/eval/summary.json reports checkpoint-400 and final both at 51/136=37.50% solve_rate, format_rate=38.97%, valid_expr_rate=38.24%.",
+        "2026-06-16 strong full fine-tuning SFT: independent record docs/experiments/sft_full_finetune_search_trace_20260616.md; final run outputs/experiments/baseline_format_v2_full_5000_from800 continued from local checkpoint-800 to max_steps=5000 with cosine LR schedule and strict validation summary outputs/experiments/baseline_format_v2_full_5000_from800/eval/summary.json reports checkpoint-4500 and final both at 110/136=80.88% solve_rate, format_rate=80.88%, valid_expr_rate=80.88%.",
+        "2026-06-16 TensorBoard default: future experiments should use TensorBoard logging; scripts/experiments/run_rollback_sft_experiment.py defaults to --report-to tensorboard with override support, and configs/sft_v1.yaml plus configs/sft_v3_checked_chat.yaml set training.report_to=[tensorboard].",
+        "2026-06-16 strong SFT analysis: pulled local metrics/eval artifacts; sparse trajectory is checkpoint-400 51/136=37.50%, checkpoint-800 70/136=51.47%, checkpoint-4500/final 110/136=80.88%; checkpoint-4500 and final raw greedy outputs are byte-identical for all 136 validation puzzles; remaining 26 failures are all answer_contract truncations with no <answer> block; docs/experiments/sft_full_finetune_search_trace_20260616.md records curve, failure analysis, and observability limits.",
+        "2026-06-16 GRPO rollout audit: scripts/experiments/audit_rollout_distribution.py sampled the strong SFT checkpoint; docs/experiments/grpo_rollout_audit_20260616.md records validation pilot pass@4=30/32 with 16/32 mixed groups and greedy-failure targeted pass@8=22/26 with 19/26 mixed groups, showing useful GRPO reward variance but severe length/truncation risk."
       ],
       "notes": [
         "Audit order is intentional: evaluation code first, then data samples/distribution, then training code/generation/checkpoint behavior.",
         "Allowed to compare against LLM4Game24 as reference baseline, but do not copy its code or loosen this repo strict verifier/reporting contract.",
         "Current collaboration mode remains human-in-loop; stop for user confirmation before changing model, split, answer contract, verifier standard, or training route.",
-        "Next remote run: qwen25_15b_lora_sft_v3_checked_chat with prompt_style=qwen_chat and trace_type=checked_success; evaluate checkpoints with --prompt-style qwen_chat."
+        "Next remote run: qwen25_15b_lora_sft_v3_checked_chat with prompt_style=qwen_chat and trace_type=checked_success; evaluate checkpoints with --prompt-style qwen_chat.",
+        "Future long SFT runs that require accuracy curves should set --save-total-limit > 1 and keep TensorBoard/raw eval artifacts."
       ]
     }
   ]
