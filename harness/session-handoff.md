@@ -18,7 +18,7 @@
 - Collaboration mode：高自治执行，关键边界升级；当前围绕 M3 GRPO pilot 做可执行设计和后续最小实现。
 - Development principles：研究原型 + Python library/CLI，Google Python Style 轻量执行。
 - 当前边界：不改主模型、split、answer contract、verifier 接受标准；conservative GRPO pilot 已授权。
-- 当前实验退出条件：设计已落地；short probe 已验证 `beta=0.001`/`scale_rewards=none` 的 5-step LoRA 是当前最优，filtered pool/len512/targeted SFT 都未超过 `114/136`。继续扩大前必须找到新的 GRPO reward 或采样路线。
+- 当前实验退出条件：设计已落地；当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512 和 targeted SFT refresh 都退化；继续扩大前必须验证新的 closure-aware reward 或更针对 long-search failures 的训练池。
 
 ## 当前已验证状态
 
@@ -122,11 +122,22 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
   `2` wrong-number。该配置不能长训。
 - Probe 结论补充：`lora_r16_beta001_none_10` validation `113/136 = 83.09%`，比 5-step 的 `114/136` 略差；`scale_rewards=group` 的 5-step 只有 `108/136 = 79.41%`，因此当前最优还是 `lora_r16_beta001_none_5`。
 - 新增负结果：filtered pool 的 5-step probe 与当前最佳同为 `114/136` 但未突破；filtered + `max_completion_length=512` 退到 `113/136`；targeted SFT full refresh 从 sampled success 训练 `50` step 后退到 `95/136`，retention 只有 `87/110`，不要继续这条 SFT refresh。
+- 当前最佳更新：filtered 37-prompt pool + `num_generations=8` +
+  `gradient_accumulation_steps=8` + `learning_rate=5e-7` + `beta=0.001` +
+  `max_steps=5` reached validation `116/136 = 85.29%` with retention
+  `109/110` and `20` answer-contract failures. The corresponding 10-step run
+  fell to `114/136`; `beta=0.002` fell to `111/136`; original 88-prompt mixed
+  pool with the same G8/lr5e-7 recipe fell to `108/136`. Do not expand those
+  negative branches.
+- Remaining failures in the best run are still long rollback/search outputs
+  truncated before any `<answer>` block. Next useful route is closure-aware
+  reward or a more targeted train pool, not more blind step/beta expansion.
 
 ## 仍损坏或未验证
 
-- 当前本地有未提交改动：harness/progress.md 和本 handoff 更新，用于记录
-  short pilot 结果。
+- 当前本地有未提交改动：close-bonus reward profile scaffold and harness
+  updates are in progress; commit after focused tests pass and remote probe
+  evidence is recorded.
 - 本地未安装 `trl`，真实 GRPO 训练/评估仍只能在 AutoDL train env 验证。
 - 本地 `scripts/audit_sft_dataset.py` 因本地缺少 `transformers` 未运行；已用 repo-local JSONL + strict verifier 做替代数据审计。
 - AutoDL 直连 GitHub 不稳定；同步需要代理公式。
@@ -141,14 +152,14 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 - 归档状态：旧 `0002-sft-training-readiness` 和 `20260615-sft-audit-and-repair` 计划已移到 `plans/archive/`。
 - 临时工件：`data/processed/` 和 `outputs/` 是 ignored runtime artifacts，不应提交。
 - 训练状态：AutoDL 当前无 running train/eval command；最近一次 GPU 检查为
-  `0%` utilization、`0 MiB / 49140 MiB`。
+  `0%` utilization、`0 MiB / 49140 MiB` after mixed-pool G8 eval completed.
 
 ## 下一步最佳动作
 
-不要扩大 `beta0_none_25`。下一步应先诊断 destructive update：确认是否需要
-更低 learning rate / 更少 steps / `beta=0.001` reference KL / `scale_rewards=group`
-A/B / 更小且更稳定的 active subset；并考虑先跑 sampled-success targeted SFT 作为
-低成本 baseline。任何新 GRPO 训练都应先用 <=5 step probe，并立即评估 retention。
+不要扩大 `beta0_none_25`、G8 10-step、`beta=0.002`、mixed pool 或 targeted SFT
+refresh。下一步应验证 close-bonus reward profile：默认 strict reward 不变，只在
+strict-valid 且早闭合 `<answer>` 的样本上加小 bonus，避免奖励短错答案。任何新
+GRPO 训练都应先用 <=5 step probe，并立即评估 retention 和 wrong-answer rate。
 
 ## 命令
 

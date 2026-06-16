@@ -11,7 +11,7 @@
 - 当前任务计划：`plans/active/20260616-grpo-pilot-design.md`
 - 当前模式：高自治执行；进入 conservative GRPO pilot 设计和后续最小实现。
 - 背景：strong full fine-tuning SFT 已达到 validation `110/136 = 80.88%`；剩余 `26` 个 greedy 失败都是 answer-contract/truncation；rollout audit 证明多数 greedy 失败题在采样分布中已有正确轨迹。
-- 下一步最佳动作：当前最佳 short probe 仍是 `lora_r16_beta001_none_5` 的 `114/136 = 83.82%`；filtered pool 持平、len512 退化、targeted SFT refresh 明显破坏 retention。后续不要继续 SFT refresh 或扩大这些退化分支，优先找新的 GRPO reward/采样路线。
+- 下一步最佳动作：当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512 和 targeted SFT refresh 均退化；后续不要继续扩这些负分支，优先验证 closure-aware reward 或更针对剩余 long-search failures 的训练池。
 
 ## 状态约定
 
@@ -304,3 +304,27 @@
   risk before spending more GPU, e.g. shorter/safer probe, lower LR, fewer
   updates, smaller active subset, KL/reference beta probe, or targeted SFT
   baseline first.
+
+### 2026-06-17 - GRPO route search best reaches 116/136
+
+- New implementation support: `scripts/train_grpo.py` now exposes
+  `--gradient-accumulation-steps`, enabling `num_generations=8` without TRL
+  effective-batch divisibility failures.
+- Current best AutoDL run:
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5`.
+- Best config: filtered 37-prompt pool selected by `1..2` correct samples plus
+  at least one truncation, `num_generations=8`, `gradient_accumulation_steps=8`,
+  LoRA r16, `learning_rate=5e-7`, `beta=0.001`, `scale_rewards=none`,
+  `max_steps=5`, strict reward.
+- Best result: validation `116/136 = 85.29%`, retained `109/110` SFT successes,
+  lost `1`, added `7`, failure mix `20` answer-contract failures and `0`
+  wrong-answer failures. This passes the pilot early success gate but remains
+  below the final `123/136` target.
+- Negative probes: same config with `10` steps fell to `114/136`; `beta=0.002`
+  fell to `111/136`; original 88-prompt mixed pool with G=8/lr5e-7 fell to
+  `108/136`. Do not expand these branches.
+- Remaining failures in the best run are still long rollback/search
+  continuations that hit the 1024-token budget before any `<answer>` block.
+  Next useful route is a bounded closure-aware reward profile or a more targeted
+  train pool for remaining long-search failures, not more blind step/beta/pool
+  expansion.

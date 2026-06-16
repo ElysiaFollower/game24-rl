@@ -9,10 +9,13 @@ from typing import Any
 from game24_rl.verifier import VerificationResult, verify_answer
 
 GRPO_REWARD_VERSION = "strict-correctness-closure-v1"
+GRPO_CLOSE_BONUS_REWARD_VERSION = "strict-correctness-close-bonus-v1"
 
 CORRECT_REWARD = 1.0
 MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.2
 PARSEABLE_WRONG_ANSWER_REWARD = -0.1
+EARLY_CLOSE_BONUS = 0.1
+ON_TIME_CLOSE_BONUS = 0.05
 
 
 @dataclass(frozen=True)
@@ -69,16 +72,24 @@ def score_completion(
     *,
     numbers: Sequence[int],
     target: int = 24,
+    reward_profile: str = "strict",
 ) -> GrpoRewardScore:
     """Scores one model completion with the GRPO reward v1 contract."""
 
     verification = verify_answer(completion, puzzle=numbers, target=target)
     closure = answer_closure_metrics(completion)
-    reward, reward_reason = _reward_from_verification(verification, closure)
+    reward, reward_reason = _reward_from_verification(
+        verification,
+        closure,
+        reward_profile=reward_profile,
+    )
+    reward_version = GRPO_REWARD_VERSION
+    if reward_profile == "close_bonus":
+        reward_version = GRPO_CLOSE_BONUS_REWARD_VERSION
     return GrpoRewardScore(
         reward=reward,
         reward_reason=reward_reason,
-        reward_version=GRPO_REWARD_VERSION,
+        reward_version=reward_version,
         verifier_reason=verification.reason,
         valid=verification.valid,
         expression=verification.expression,
@@ -93,6 +104,7 @@ def reward_completions(
     completions: Sequence[str],
     numbers: Sequence[Sequence[int]],
     target: Sequence[int] | None = None,
+    reward_profile: str = "strict",
     **_: Any,
 ) -> list[float]:
     """TRL-style reward function accepting dataset columns as keyword args."""
@@ -103,7 +115,12 @@ def reward_completions(
         raise ValueError("completions, numbers, and target must have equal length")
 
     return [
-        score_completion(completion, numbers=puzzle, target=item_target).reward
+        score_completion(
+            completion,
+            numbers=puzzle,
+            target=item_target,
+            reward_profile=reward_profile,
+        ).reward
         for completion, puzzle, item_target in zip(
             completions,
             numbers,
@@ -146,14 +163,32 @@ def answer_closure_metrics(completion: str) -> AnswerClosureMetrics:
 def _reward_from_verification(
     verification: VerificationResult,
     closure: AnswerClosureMetrics,
+    *,
+    reward_profile: str,
 ) -> tuple[float, str]:
     if verification.valid:
+        if reward_profile == "close_bonus":
+            return _reward_valid_with_close_bonus(closure)
+        if reward_profile != "strict":
+            raise ValueError(f"unknown reward profile: {reward_profile}")
         return CORRECT_REWARD, "strict_correct"
     if not closure.has_complete_answer or verification.reason.startswith(
         "answer_contract"
     ):
         return MISSING_OR_INCOMPLETE_ANSWER_REWARD, "missing_or_incomplete_answer"
     return PARSEABLE_WRONG_ANSWER_REWARD, "parseable_wrong_answer"
+
+
+def _reward_valid_with_close_bonus(
+    closure: AnswerClosureMetrics,
+) -> tuple[float, str]:
+    if closure.answer_close_token_index is None:
+        return CORRECT_REWARD, "strict_correct"
+    if closure.answer_close_token_index <= 256:
+        return CORRECT_REWARD + EARLY_CLOSE_BONUS, "strict_correct_close_le_256"
+    if closure.answer_close_token_index <= 512:
+        return CORRECT_REWARD + ON_TIME_CLOSE_BONUS, "strict_correct_close_le_512"
+    return CORRECT_REWARD, "strict_correct_late_close"
 
 
 def _first_token_containing(tokens: Sequence[str], needle: str) -> int | None:

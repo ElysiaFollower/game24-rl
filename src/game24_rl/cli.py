@@ -248,6 +248,11 @@ def train_grpo_main() -> None:
     parser.add_argument("--learning-rate", type=float, default=5e-6)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
+    parser.add_argument(
+        "--reward-profile",
+        choices=["strict", "close_bonus"],
+        default="strict",
+    )
     parser.add_argument("--peft-mode", choices=["none", "lora"], default="lora")
     parser.add_argument("--lora-rank", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
@@ -494,6 +499,7 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         "output_dir": str(output_dir),
         "beta": args.beta,
         "scale_rewards": args.scale_rewards,
+        "reward_profile": args.reward_profile,
         "mask_truncated_completions": args.mask_truncated_completions,
         "remove_unused_columns": args.remove_unused_columns,
         "max_steps": args.max_steps,
@@ -516,9 +522,10 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
     )
 
     peft_config = _build_grpo_peft_config(args)
+    reward_func = _build_reward_func(args.reward_profile)
     trainer = GRPOTrainer(
         model=args.model_name_or_path,
-        reward_funcs=reward_completions,
+        reward_funcs=reward_func,
         args=config,
         train_dataset=Dataset.from_list(prompt_records),
         peft_config=peft_config,
@@ -531,6 +538,19 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         encoding="utf-8",
     )
     return metadata
+
+
+def _build_reward_func(reward_profile: str) -> object:
+    """Builds a TRL-compatible reward function with fixed experiment profile."""
+
+    def _reward_func(**kwargs: object) -> list[float]:
+        return reward_completions(
+            **kwargs,
+            reward_profile=reward_profile,
+        )
+
+    _reward_func.__name__ = f"reward_completions_{reward_profile}"
+    return _reward_func
 
 
 def _build_grpo_peft_config(args: argparse.Namespace) -> object | None:

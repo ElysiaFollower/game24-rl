@@ -1,6 +1,7 @@
 """Tests for GRPO reward and answer-closure diagnostics."""
 
 from game24_rl.rewards import (
+    GRPO_CLOSE_BONUS_REWARD_VERSION,
     GRPO_REWARD_VERSION,
     answer_closure_metrics,
     reward_completions,
@@ -36,6 +37,27 @@ def test_score_completion_penalizes_missing_answer_more_than_wrong_answer() -> N
 
     assert missing.reward == -0.2
     assert missing.reward_reason == "missing_or_incomplete_answer"
+    assert wrong.reward == -0.1
+    assert wrong.reward_reason == "parseable_wrong_answer"
+
+
+def test_close_bonus_profile_only_rewards_valid_early_closure() -> None:
+    early = score_completion(
+        "<answer>((8 - 2) * (7 - 3))</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="close_bonus",
+    )
+    wrong = score_completion(
+        "<answer>8 + 2 + 7 + 3</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="close_bonus",
+    )
+
+    assert early.reward == 1.1
+    assert early.reward_reason == "strict_correct_close_le_256"
+    assert early.reward_version == GRPO_CLOSE_BONUS_REWARD_VERSION
     assert wrong.reward == -0.1
     assert wrong.reward_reason == "parseable_wrong_answer"
 

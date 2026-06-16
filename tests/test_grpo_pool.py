@@ -4,7 +4,11 @@ import json
 from argparse import Namespace
 from pathlib import Path
 
-from game24_rl.cli import _build_grpo_config_kwargs, _build_grpo_peft_config
+from game24_rl.cli import (
+    _build_grpo_config_kwargs,
+    _build_grpo_peft_config,
+    _build_reward_func,
+)
 from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.grpo import (
     GRPO_POOL_SCHEMA_VERSION,
@@ -163,6 +167,22 @@ def test_build_grpo_peft_config_can_be_disabled() -> None:
     config = _build_grpo_peft_config(Namespace(peft_mode="none"))
 
     assert config is None
+
+
+def test_build_reward_func_applies_fixed_profile() -> None:
+    reward_func = _build_reward_func("close_bonus")
+
+    rewards = reward_func(
+        completions=[
+            "<answer>((8 - 2) * (7 - 3))</answer>",
+            "<answer>8 + 2 + 7 + 3</answer>",
+        ],
+        numbers=[[8, 2, 7, 3], [8, 2, 7, 3]],
+        target=[24, 24],
+    )
+
+    assert rewards == [1.1, -0.1]
+    assert reward_func.__name__ == "reward_completions_close_bonus"
 
 
 def test_select_prompt_ids_from_details_filters_high_signal_groups() -> None:
