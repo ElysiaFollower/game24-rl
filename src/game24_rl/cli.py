@@ -138,6 +138,8 @@ def eval_checkpoint_main() -> None:
     )
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-1.5B-Instruct")
     parser.add_argument("--checkpoint", help="LoRA checkpoint path.")
+    parser.add_argument("--training-mode", choices=["lora", "full"], default="lora")
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--raw-outputs", help="Existing raw-output JSONL to score.")
     parser.add_argument(
         "--solver-dry-run",
@@ -188,6 +190,8 @@ def eval_checkpoint_main() -> None:
                 decoding=decoding,
                 limit=args.limit,
                 prompt_style=args.prompt_style,
+                training_mode=args.training_mode,
+                batch_size=args.batch_size,
             )
         report = evaluate_raw_outputs_file(
             raw_outputs_path=raw_outputs,
@@ -242,6 +246,10 @@ def train_grpo_main() -> None:
     parser.add_argument("--learning-rate", type=float, default=5e-6)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
+    parser.add_argument("--peft-mode", choices=["none", "lora"], default="lora")
+    parser.add_argument("--lora-rank", type=int, default=16)
+    parser.add_argument("--lora-alpha", type=int, default=32)
+    parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument(
         "--mask-truncated-completions",
         action=argparse.BooleanOptionalAction,
@@ -449,6 +457,10 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         "num_generations": args.num_generations,
         "temperature": args.temperature,
         "top_p": args.top_p,
+        "peft_mode": args.peft_mode,
+        "lora_rank": args.lora_rank,
+        "lora_alpha": args.lora_alpha,
+        "lora_dropout": args.lora_dropout,
         "max_prompt_length_requested": args.max_prompt_length,
         "max_prompt_length_applied_by_trl": False,
         "grpo_config_kwargs": config_kwargs,
@@ -459,11 +471,13 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         encoding="utf-8",
     )
 
+    peft_config = _build_grpo_peft_config(args)
     trainer = GRPOTrainer(
         model=args.model_name_or_path,
         reward_funcs=reward_completions,
         args=config,
         train_dataset=Dataset.from_list(prompt_records),
+        peft_config=peft_config,
     )
     trainer.train()
     trainer.save_model(str(output_dir / "final"))
@@ -473,6 +487,24 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         encoding="utf-8",
     )
     return metadata
+
+
+def _build_grpo_peft_config(args: argparse.Namespace) -> object | None:
+    """Builds optional LoRA config for GRPO probes."""
+
+    if args.peft_mode == "none":
+        return None
+    try:
+        from peft import LoraConfig  # type: ignore[import-not-found]  # noqa: PLC0415
+    except ImportError as exc:
+        raise SystemExit(f"PEFT is required for --peft-mode lora: {exc}") from exc
+    return LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        target_modules="all-linear",
+        task_type="CAUSAL_LM",
+    )
 
 
 def _build_grpo_config_kwargs(

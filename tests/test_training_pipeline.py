@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from game24_rl.evaluate import (
     build_solver_raw_outputs,
     evaluate_raw_outputs_file,
     evaluate_solver_dry_run,
+    generate_checkpoint_outputs,
     write_jsonl,
 )
 from game24_rl.train_sft import (
@@ -197,6 +199,13 @@ def test_solver_dry_run_can_record_generation_prompt_style(tmp_path: Path) -> No
     )
 
     assert report["generation_prompt_style"] == "qwen_chat"
+
+
+def test_evaluate_checkpoint_api_accepts_training_mode_and_batch_size() -> None:
+    signature = inspect.signature(generate_checkpoint_outputs)
+
+    assert "training_mode" in signature.parameters
+    assert "batch_size" in signature.parameters
 
 
 def _write_test_config(

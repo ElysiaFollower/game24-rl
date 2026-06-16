@@ -1,9 +1,10 @@
 """Tests for GRPO active-pool audit gates and probe metadata."""
 
 import json
+from argparse import Namespace
 from pathlib import Path
 
-from game24_rl.cli import _build_grpo_config_kwargs
+from game24_rl.cli import _build_grpo_config_kwargs, _build_grpo_peft_config
 from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.grpo import (
     GRPO_POOL_SCHEMA_VERSION,
@@ -153,6 +154,12 @@ def test_build_grpo_config_kwargs_skips_unsupported_optional_fields() -> None:
     assert "max_prompt_length" not in config
     assert config["top_p"] == 0.95
     assert skipped == {"temperature": 0.8}
+
+
+def test_build_grpo_peft_config_can_be_disabled() -> None:
+    config = _build_grpo_peft_config(Namespace(peft_mode="none"))
+
+    assert config is None
 
 
 def test_grpo_dry_run_writes_prompt_and_reward_artifacts(tmp_path: Path) -> None:

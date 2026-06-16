@@ -260,6 +260,8 @@ def generate_checkpoint_outputs(
     decoding: DecodingConfig,
     limit: int | None = None,
     prompt_style: str = PROMPT_STYLE_PLAIN,
+    training_mode: str = "lora",
+    batch_size: int = 1,
 ) -> None:
     """Generates model outputs for a split and writes raw-output JSONL.
 
@@ -268,7 +270,6 @@ def generate_checkpoint_outputs(
     """
 
     import torch  # pylint: disable=import-outside-toplevel
-    from peft import PeftModel  # pylint: disable=import-outside-toplevel
     from transformers import (  # pylint: disable=import-outside-toplevel
         AutoModelForCausalLM,
         AutoTokenizer,
@@ -279,22 +280,41 @@ def generate_checkpoint_outputs(
     if limit is not None:
         records = records[:limit]
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer_source = str(checkpoint) if training_mode == "full" else model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        torch_dtype="auto",
-        trust_remote_code=True,
-    )
-    model = PeftModel.from_pretrained(base_model, str(checkpoint))
+    tokenizer.padding_side = "left"
+    if training_mode == "full":
+        model = AutoModelForCausalLM.from_pretrained(
+            str(checkpoint),
+            device_map="auto",
+            torch_dtype="auto",
+            trust_remote_code=True,
+        )
+    elif training_mode == "lora":
+        from peft import PeftModel  # pylint: disable=import-outside-toplevel
+
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype="auto",
+            trust_remote_code=True,
+        )
+        model = PeftModel.from_pretrained(base_model, str(checkpoint))
+    else:
+        raise ValueError(f"unsupported training_mode: {training_mode}")
     model.eval()
 
     raw_outputs = []
-    for record in records:
-        prompt = format_prompt(record["numbers"], prompt_style=prompt_style)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    for start in range(0, len(records), batch_size):
+        batch = records[start : start + batch_size]
+        prompts = [
+            format_prompt(record["numbers"], prompt_style=prompt_style)
+            for record in batch
+        ]
+        inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+        input_width = inputs["input_ids"].shape[1]
         with torch.inference_mode():
             generated = model.generate(
                 **inputs,
@@ -304,21 +324,22 @@ def generate_checkpoint_outputs(
                 top_p=decoding.top_p,
                 pad_token_id=tokenizer.eos_token_id,
             )
-        output = tokenizer.decode(
-            generated[0][inputs["input_ids"].shape[-1] :],
-            skip_special_tokens=True,
-        )
-        raw_outputs.append(
-            {
-                "schema_version": RAW_OUTPUT_SCHEMA_VERSION,
-                "id": record["id"],
-                "numbers": record["numbers"],
-                "target": record["target"],
-                "prompt": prompt,
-                "output": output,
-                "source": "checkpoint_generation",
-            }
-        )
+        for index, record in enumerate(batch):
+            output = tokenizer.decode(
+                generated[index][input_width:],
+                skip_special_tokens=True,
+            )
+            raw_outputs.append(
+                {
+                    "schema_version": RAW_OUTPUT_SCHEMA_VERSION,
+                    "id": record["id"],
+                    "numbers": record["numbers"],
+                    "target": record["target"],
+                    "prompt": prompts[index],
+                    "output": output,
+                    "source": f"{training_mode}_checkpoint_generation",
+                }
+            )
 
     write_jsonl(raw_outputs, output_path)
 
