@@ -16,8 +16,8 @@
   retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
   second-stage hard-pool continuation 从该 adapter 继续训后退到
   `112/136`，说明不能靠盲目加大 RL 强度突破；更可靠的 90%+ 路线是
-  inference-time strict verifier rerank，当前已用 greedy + failure-only G8
-  sampled candidates 达到 `133/136 = 97.79%`。
+  inference-time strict verifier rerank，当前已达到 validation
+  `133/136 = 97.79%` 和 test `136/137 = 99.27%`。
 
 ## 状态约定
 
@@ -363,3 +363,11 @@
   Artifact:
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_verifier_rerank_greedy_plus_failures_g8/validation-verifier-rerank-eval-report.json`.
   This is a decoding/search-selection result, not a greedy checkpoint gain.
+- Test split confirmation:
+  best greedy GRPO adapter scored `116/137 = 84.67%` on test; all `21`
+  failures were answer-contract/no-answer. Failure-only G8 sampled rollout
+  solved `20/21` of those test greedy failures, and greedy-then-sampled strict
+  verifier rerank scored `136/137 = 99.27%` on test. Artifacts:
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_greedy/test-eval-report.json`
+  and
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_verifier_rerank_greedy_plus_failures_g8/test-verifier-rerank-eval-report.json`.

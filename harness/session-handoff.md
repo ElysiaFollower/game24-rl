@@ -23,7 +23,7 @@
   retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
   second-stage hard-pool continuation 已退到 `112/136`，不要继续盲目加大
   RL 强度。当前最强 90%+ 结果来自 inference-time strict verifier rerank：
-  greedy + failure-only G8 sampled candidates 达到 `133/136 = 97.79%`。
+  validation `133/136 = 97.79%`，test `136/137 = 99.27%`。
 
 ## 当前已验证状态
 
@@ -160,6 +160,14 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_verifier_rerank_greedy_plus_failures_g8/validation-verifier-rerank-eval-report.json`.
   Treat this as decoding/search-selection evidence, not greedy checkpoint
   improvement.
+- Test split confirms the rerank route generalizes: best greedy GRPO adapter
+  scored `116/137 = 84.67%` on test; all `21` failures were
+  answer-contract/no-answer. Failure-only G8 sampled rollout solved `20/21`
+  test greedy failures, and strict verifier rerank scored
+  `136/137 = 99.27%`. Artifacts:
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_greedy/test-eval-report.json`
+  and
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_verifier_rerank_greedy_plus_failures_g8/test-verifier-rerank-eval-report.json`.
 
 ## 仍损坏或未验证
 
@@ -185,7 +193,8 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 
 不要扩大 `beta0_none_25`、G8 10-step、`beta=0.002`、mixed pool、targeted SFT
 refresh、当前 close-bonus profile 或 hard-pool second-stage continuation。当前
-可展示强结果应优先走 verifier-rerank 报告；若继续研究 greedy 提升，下一步应改变
+可展示强结果应优先走 verifier-rerank 报告，并在课程报告中清楚区分 greedy
+checkpoint 分数和 inference-time rerank 分数。若继续研究 greedy 提升，下一步应改变
 目标本身：例如更明确的停止/闭合策略、训练时 EOS/answer closure 建模，或把
 verifier-rerank 蒸馏为新的 SFT/RL 数据，而不是简单加 step/LR/beta。
 
