@@ -12,10 +12,12 @@ from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.evaluate import (
     DecodingConfig,
     build_solver_raw_outputs,
+    build_verifier_reranked_raw_outputs,
     evaluate_raw_outputs_file,
     evaluate_solver_dry_run,
     generate_checkpoint_outputs,
     write_jsonl,
+    write_verifier_rerank_report,
 )
 from game24_rl.train_sft import (
     find_latest_checkpoint,
@@ -160,6 +162,95 @@ def test_raw_output_evaluation_report_schema(tmp_path: Path) -> None:
     assert report["metrics"]["format_rate"] == 2 / 3
     assert report["metrics"]["valid_expr_rate"] == 2 / 3
     assert report["metrics"]["solve_rate"] == 1 / 3
+
+
+def test_verifier_rerank_keeps_greedy_success_and_fixes_failures() -> None:
+    greedy = [
+        {
+            "id": "already-ok",
+            "numbers": [8, 2, 7, 3],
+            "target": 24,
+            "output": "<answer>((8 - 2) * (7 - 3))</answer>",
+        },
+        {
+            "id": "needs-sample",
+            "numbers": [8, 2, 7, 3],
+            "target": 24,
+            "output": "still searching",
+        },
+    ]
+    sampled = [
+        {
+            "id": "needs-sample",
+            "sample_index": 0,
+            "numbers": [8, 2, 7, 3],
+            "target": 24,
+            "output": "<answer>8 + 2 + 7 + 3</answer>",
+        },
+        {
+            "id": "needs-sample",
+            "sample_index": 1,
+            "numbers": [8, 2, 7, 3],
+            "target": 24,
+            "output": "<answer>((8 - 2) * (7 - 3))</answer>",
+        },
+    ]
+
+    reranked = build_verifier_reranked_raw_outputs(
+        greedy_records=greedy,
+        sampled_records=sampled,
+    )
+
+    assert reranked[0]["rerank_source"] == "greedy"
+    assert reranked[1]["rerank_source"] == "sampled_verifier_fallback"
+    assert reranked[1]["sample_index"] == 1
+
+
+def test_verifier_rerank_report_uses_standard_eval_metrics(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(build_split_manifest(), manifest_path)
+    greedy_path = tmp_path / "greedy.jsonl"
+    sampled_path = tmp_path / "sampled.jsonl"
+    write_jsonl(
+        [
+            {
+                "id": "needs-sample",
+                "numbers": [8, 2, 7, 3],
+                "target": 24,
+                "output": "still searching",
+            }
+        ],
+        greedy_path,
+    )
+    write_jsonl(
+        [
+            {
+                "id": "needs-sample",
+                "sample_index": 0,
+                "numbers": [8, 2, 7, 3],
+                "target": 24,
+                "output": "<answer>((8 - 2) * (7 - 3))</answer>",
+            }
+        ],
+        sampled_path,
+    )
+
+    report = write_verifier_rerank_report(
+        greedy_raw_outputs_path=greedy_path,
+        sampled_raw_outputs_path=sampled_path,
+        output_dir=tmp_path / "rerank",
+        model_name="unit-test-model",
+        checkpoint="checkpoint-1",
+        split_manifest=manifest_path,
+        split="validation",
+        greedy_decoding=DecodingConfig(),
+        sampled_decoding=DecodingConfig(do_sample=True, max_new_tokens=1024),
+    )
+
+    assert report["metrics"]["solve_rate"] == 1.0
+    assert report["decoding"]["policy"] == "greedy_then_sampled_verifier_rerank"
+    report_path = tmp_path / "rerank" / "validation-verifier-rerank-eval-report.json"
+    assert report_path.exists()
 
 
 def test_solver_dry_run_evaluation_is_perfect_on_solvable_split(tmp_path: Path) -> None:

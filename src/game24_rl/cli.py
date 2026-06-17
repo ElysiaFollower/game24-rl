@@ -14,6 +14,7 @@ from game24_rl.evaluate import (
     evaluate_raw_outputs_file,
     evaluate_solver_dry_run,
     generate_checkpoint_outputs,
+    write_verifier_rerank_report,
 )
 from game24_rl.grpo import (
     GrpoCompatibilityConfig,
@@ -143,6 +144,13 @@ def eval_checkpoint_main() -> None:
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--raw-outputs", help="Existing raw-output JSONL to score.")
     parser.add_argument(
+        "--sampled-raw-outputs",
+        help=(
+            "Sampled candidate raw outputs for greedy-then-verifier-rerank "
+            "evaluation. Requires --raw-outputs."
+        ),
+    )
+    parser.add_argument(
         "--solver-dry-run",
         action="store_true",
         help="Use exact solver outputs without loading model weights.",
@@ -172,6 +180,21 @@ def eval_checkpoint_main() -> None:
             limit=args.limit or 16,
             model_name="exact-solver-dry-run",
             prompt_style=args.prompt_style,
+        )
+    elif args.sampled_raw_outputs:
+        if not args.raw_outputs:
+            raise SystemExit("--sampled-raw-outputs requires --raw-outputs")
+        report = write_verifier_rerank_report(
+            greedy_raw_outputs_path=args.raw_outputs,
+            sampled_raw_outputs_path=args.sampled_raw_outputs,
+            output_dir=output_dir,
+            model_name=args.model_name,
+            checkpoint=args.checkpoint,
+            split_manifest=args.manifest,
+            split=args.split,
+            greedy_decoding=DecodingConfig(max_new_tokens=args.max_new_tokens),
+            sampled_decoding=decoding,
+            generation_prompt_style=args.prompt_style,
         )
     else:
         raw_outputs = Path(args.raw_outputs) if args.raw_outputs else None

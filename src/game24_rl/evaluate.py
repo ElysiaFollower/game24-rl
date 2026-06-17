@@ -17,6 +17,7 @@ from game24_rl.verifier import VERIFIER_VERSION, VerificationResult, verify_answ
 ANSWER_CONTRACT = "<answer>...</answer>"
 EVALUATION_SCHEMA_VERSION = "game24-eval-report-v1"
 RAW_OUTPUT_SCHEMA_VERSION = "game24-raw-outputs-v1"
+RERANK_RAW_OUTPUT_SCHEMA_VERSION = "game24-verifier-rerank-raw-outputs-v1"
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,97 @@ def evaluate_raw_outputs_file(
     return report
 
 
+def build_verifier_reranked_raw_outputs(
+    *,
+    greedy_records: Iterable[dict[str, Any]],
+    sampled_records: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Chooses strict-verifier-valid sampled fallbacks for failed greedy outputs.
+
+    Greedy outputs remain the primary answer. Sampled candidates are only used
+    when the greedy output fails this repository's strict verifier, and the
+    first valid sampled completion for the same puzzle id is selected.
+    """
+
+    sampled_by_id: dict[str, list[dict[str, Any]]] = {}
+    for record in sampled_records:
+        sampled_by_id.setdefault(str(record["id"]), []).append(record)
+
+    reranked = []
+    for record in greedy_records:
+        greedy_result = verify_answer(
+            record["output"],
+            puzzle=record["numbers"],
+            target=record.get("target", 24),
+        )
+        selected = dict(record)
+        selected["schema_version"] = RERANK_RAW_OUTPUT_SCHEMA_VERSION
+        selected["rerank_source"] = "greedy"
+        selected["greedy_reason"] = greedy_result.reason
+        selected["sample_index"] = None
+        if not greedy_result.valid:
+            fallback = _first_valid_sampled_record(
+                sampled_by_id.get(str(record["id"]), []),
+                numbers=record["numbers"],
+                target=record.get("target", 24),
+            )
+            if fallback is not None:
+                selected = dict(fallback)
+                selected["schema_version"] = RERANK_RAW_OUTPUT_SCHEMA_VERSION
+                selected["rerank_source"] = "sampled_verifier_fallback"
+                selected["greedy_reason"] = greedy_result.reason
+        reranked.append(selected)
+    return reranked
+
+
+def write_verifier_rerank_report(
+    *,
+    greedy_raw_outputs_path: str | Path,
+    sampled_raw_outputs_path: str | Path,
+    output_dir: str | Path,
+    model_name: str,
+    checkpoint: str | None,
+    split_manifest: str | Path,
+    split: str,
+    greedy_decoding: DecodingConfig,
+    sampled_decoding: DecodingConfig,
+    generation_prompt_style: str | None = None,
+) -> dict[str, Any]:
+    """Writes reranked raw outputs and a standard strict-verifier report."""
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    reranked_raw_path = output_path / f"{split}-verifier-reranked-raw-outputs.jsonl"
+    report_path = output_path / f"{split}-verifier-rerank-eval-report.json"
+    reranked_records = build_verifier_reranked_raw_outputs(
+        greedy_records=read_jsonl(greedy_raw_outputs_path),
+        sampled_records=read_jsonl(sampled_raw_outputs_path),
+    )
+    write_jsonl(reranked_records, reranked_raw_path)
+    report = evaluate_raw_outputs_file(
+        raw_outputs_path=reranked_raw_path,
+        report_path=report_path,
+        model_name=model_name,
+        checkpoint=checkpoint,
+        split_manifest=split_manifest,
+        split=split,
+        decoding=sampled_decoding,
+        generation_prompt_style=generation_prompt_style,
+    )
+    report["decoding"] = {
+        "policy": "greedy_then_sampled_verifier_rerank",
+        "greedy": asdict(greedy_decoding),
+        "sampled": asdict(sampled_decoding),
+    }
+    report["greedy_raw_outputs_path"] = str(greedy_raw_outputs_path)
+    report["sampled_raw_outputs_path"] = str(sampled_raw_outputs_path)
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return report
+
+
 def build_evaluation_report(
     *,
     summary: EvaluationMetricSummary,
@@ -180,6 +272,23 @@ def build_evaluation_report(
         },
         "details": details,
     }
+
+
+def _first_valid_sampled_record(
+    records: list[dict[str, Any]],
+    *,
+    numbers: list[int],
+    target: int,
+) -> dict[str, Any] | None:
+    for record in records:
+        result = verify_answer(
+            record["output"],
+            puzzle=numbers,
+            target=target,
+        )
+        if result.valid:
+            return record
+    return None
 
 
 def build_solver_raw_outputs(

@@ -11,7 +11,13 @@
 - 当前任务计划：`plans/active/20260616-grpo-pilot-design.md`
 - 当前模式：高自治执行；进入 conservative GRPO pilot 设计和后续最小实现。
 - 背景：strong full fine-tuning SFT 已达到 validation `110/136 = 80.88%`；剩余 `26` 个 greedy 失败都是 answer-contract/truncation；rollout audit 证明多数 greedy 失败题在采样分布中已有正确轨迹。
-- 下一步最佳动作：当前最佳 short probe 是 `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，retention `109/110`，answer-contract failures `20`，wrong-answer `0`。10-step、`beta=0.002`、mixed pool、len512、targeted SFT refresh 和 close-bonus reward 均未超过 best；后续不要继续扩这些负分支，优先构建更针对剩余 long-search failures 的训练池或更强但受控的搜索停止目标。
+- 下一步最佳动作：当前最佳 greedy GRPO short probe 仍是
+  `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，
+  retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
+  second-stage hard-pool continuation 从该 adapter 继续训后退到
+  `112/136`，说明不能靠盲目加大 RL 强度突破；更可靠的 90%+ 路线是
+  inference-time strict verifier rerank，当前已用 greedy + failure-only G8
+  sampled candidates 达到 `133/136 = 97.79%`。
 
 ## 状态约定
 
@@ -333,3 +339,27 @@
   reached `115/136 = 84.56%`, retained `108/110`, added `7`, and had `21`
   answer-contract failures. The small bonus for early correct answer closure did
   not beat strict reward best, so do not expand this exact close-bonus profile.
+- Current-checkpoint train hard audit:
+  `/root/autodl-tmp/projects/grpo-route-audit/train_hard_le2trunc_best116_g4_t08_len512`
+  sampled 43 train hard prompts from the best `116/136` adapter with `G=4` and
+  `max_new_tokens=512`; result `pass@4=27/43`, mixed groups `25/43`,
+  zero-std groups `18/43`, truncation-like failures `118/172`. The accepted
+  pool manifest selected 24 hard mixed prompts, confirming usable train signal
+  still exists but the bottleneck remains answer closure.
+- Second-stage continuation probe:
+  `/root/autodl-tmp/projects/grpo-short-pilot/continue116_trainhard25_g4len512_g8_lr2e7_5`
+  loaded the best `116/136` LoRA adapter as trainable initial adapter and ran
+  5 GRPO steps on the hard mixed pool with `learning_rate=2e-7`, `beta=0.001`,
+  `G=8`. Training was healthy (`reward_std > 0`, KL about `8e-5`) but
+  validation fell to `112/136 = 82.35%`: retained `111/116`, lost `5`, gained
+  `1`, and all `24` failures were still answer-contract failures with no
+  `<answer>` block. Do not expand this route without a new stopping/closure
+  objective.
+- Verifier-rerank decoding route:
+  `eval_checkpoint.py` now supports greedy-then-sampled strict-verifier rerank
+  via `--raw-outputs` plus `--sampled-raw-outputs`. Using best `116/136`
+  greedy outputs and the existing G8 sampled candidates for its 20 greedy
+  failures produced `133/136 = 97.79%` validation with the same strict verifier.
+  Artifact:
+  `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_verifier_rerank_greedy_plus_failures_g8/validation-verifier-rerank-eval-report.json`.
+  This is a decoding/search-selection result, not a greedy checkpoint gain.
