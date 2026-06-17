@@ -235,6 +235,13 @@ def train_grpo_main() -> None:
     parser.add_argument("--compat-probe", action="store_true")
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--model-name-or-path")
+    parser.add_argument(
+        "--initial-adapter",
+        help=(
+            "Optional existing LoRA adapter to load as the trainable starting "
+            "point for second-stage GRPO."
+        ),
+    )
     parser.add_argument("--pool-manifest")
     parser.add_argument("--max-steps", type=int, default=25)
     parser.add_argument("--save-steps", type=int, default=25)
@@ -492,6 +499,7 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
     metadata = {
         "schema_version": "game24-grpo-train-run-v1",
         "model_name_or_path": args.model_name_or_path,
+        "initial_adapter": args.initial_adapter,
         "manifest": args.manifest,
         "split": args.split,
         "pool_manifest": args.pool_manifest,
@@ -522,14 +530,22 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
     )
 
     peft_config = _build_grpo_peft_config(args)
+    model = args.model_name_or_path
+    processing_class = None
+    if args.initial_adapter:
+        model, processing_class = _load_trainable_initial_adapter(args)
+        peft_config = None
     reward_func = _build_reward_func(args.reward_profile)
-    trainer = GRPOTrainer(
-        model=args.model_name_or_path,
-        reward_funcs=reward_func,
-        args=config,
-        train_dataset=Dataset.from_list(prompt_records),
-        peft_config=peft_config,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "reward_funcs": reward_func,
+        "args": config,
+        "train_dataset": Dataset.from_list(prompt_records),
+        "peft_config": peft_config,
+    }
+    if processing_class is not None:
+        trainer_kwargs["processing_class"] = processing_class
+    trainer = GRPOTrainer(**trainer_kwargs)
     trainer.train()
     trainer.save_model(str(output_dir / "final"))
     metadata["status"] = "complete"
@@ -538,6 +554,44 @@ def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
         encoding="utf-8",
     )
     return metadata
+
+
+def _load_trainable_initial_adapter(args: argparse.Namespace) -> tuple[object, object]:
+    """Loads an existing LoRA adapter as the trainable GRPO starting point."""
+
+    if args.peft_mode != "lora":
+        raise SystemExit("--initial-adapter requires --peft-mode lora")
+    try:
+        import torch  # type: ignore[import-not-found]  # noqa: PLC0415
+        from peft import PeftModel  # type: ignore[import-not-found]  # noqa: PLC0415
+        from transformers import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            AutoModelForCausalLM,
+            AutoTokenizer,
+        )
+    except ImportError as exc:
+        raise SystemExit(
+            f"Transformers/PEFT/Torch are required for --initial-adapter: {exc}"
+        ) from exc
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name_or_path,
+        trust_remote_code=True,
+    )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    base_model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+    )
+    model = PeftModel.from_pretrained(
+        base_model,
+        args.initial_adapter,
+        is_trainable=True,
+    )
+    return model, tokenizer
 
 
 def _build_reward_func(reward_profile: str) -> object:

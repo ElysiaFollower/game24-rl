@@ -8,6 +8,7 @@ from game24_rl.cli import (
     _build_grpo_config_kwargs,
     _build_grpo_peft_config,
     _build_reward_func,
+    _load_trainable_initial_adapter,
 )
 from game24_rl.datasets import build_split_manifest, write_manifest
 from game24_rl.grpo import (
@@ -167,6 +168,17 @@ def test_build_grpo_peft_config_can_be_disabled() -> None:
     config = _build_grpo_peft_config(Namespace(peft_mode="none"))
 
     assert config is None
+
+
+def test_initial_adapter_requires_lora_peft_mode() -> None:
+    try:
+        _load_trainable_initial_adapter(
+            Namespace(peft_mode="none", model_name_or_path="base", initial_adapter="a")
+        )
+    except SystemExit as exc:
+        assert "--initial-adapter requires --peft-mode lora" in str(exc)
+    else:  # pragma: no cover - defensive assertion.
+        raise AssertionError("expected SystemExit")
 
 
 def test_build_reward_func_applies_fixed_profile() -> None:
