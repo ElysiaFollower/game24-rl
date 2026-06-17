@@ -15,9 +15,11 @@
   `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，
   retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
   second-stage hard-pool continuation 从该 adapter 继续训后退到
-  `112/136`，说明不能靠盲目加大 RL 强度突破；更可靠的 90%+ 路线是
-  inference-time strict verifier rerank，当前已达到 validation
-  `133/136 = 97.79%` 和 test `136/137 = 99.27%`。
+  `112/136`，说明不能靠盲目加大 RL 强度突破；统一 direct greedy
+  `max_new_tokens=4096` 已达到 validation `126/136 = 92.65%` 和 test
+  `129/137 = 94.16%`，可作为“单模型直接推理”的 90%+ 主结果。更高的
+  inference-time strict verifier rerank 结果是 validation `133/136 = 97.79%`
+  和 test `136/137 = 99.27%`，报告时必须分开。
 
 ## 状态约定
 
@@ -371,3 +373,19 @@
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_greedy/test-eval-report.json`
   and
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_verifier_rerank_greedy_plus_failures_g8/test-verifier-rerank-eval-report.json`.
+- Direct long-token greedy route:
+  using the same best GRPO LoRA adapter as a single model with greedy decoding
+  and no verifier-rerank, `max_new_tokens=2048` reached validation
+  `123/136 = 90.44%` and test `122/137 = 89.05%`; unified
+  `max_new_tokens=4096` reached validation `126/136 = 92.65%` and test
+  `129/137 = 94.16%`. This is now the strongest direct inference result.
+  Artifacts:
+  `/root/autodl-tmp/projects/grpo-direct-long/best116_validation_greedy_4096/validation-eval-report.json`
+  and
+  `/root/autodl-tmp/projects/grpo-direct-long/best116_test_greedy_4096/test-eval-report.json`.
+  Chinese record:
+  `docs/experiments/direct_long_token_greedy_20260617.md`.
+- Eval observability fix:
+  `generate_checkpoint_outputs` now appends raw-output JSONL per batch and prints
+  `generated x/y records`, so long `2048/4096` evaluations can be monitored
+  before final report writing.

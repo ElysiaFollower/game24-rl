@@ -22,8 +22,10 @@
   `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，
   retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
   second-stage hard-pool continuation 已退到 `112/136`，不要继续盲目加大
-  RL 强度。当前最强 90%+ 结果来自 inference-time strict verifier rerank：
-  validation `133/136 = 97.79%`，test `136/137 = 99.27%`。
+  RL 强度。当前单模型直接推理主结果来自统一 greedy
+  `max_new_tokens=4096`：validation `126/136 = 92.65%`，test
+  `129/137 = 94.16%`。更高的 inference-time strict verifier rerank 是另一个
+  口径：validation `133/136 = 97.79%`，test `136/137 = 99.27%`。
 
 ## 当前已验证状态
 
@@ -168,11 +170,23 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_greedy/test-eval-report.json`
   and
   `/root/autodl-tmp/projects/grpo-short-pilot/lora_r16_beta001_filtered_g8_lr5e7_5/eval_test_verifier_rerank_greedy_plus_failures_g8/test-verifier-rerank-eval-report.json`.
+- Direct long-token greedy evaluation is now the main “single model direct
+  inference” result. With the same best GRPO LoRA adapter, greedy
+  `max_new_tokens=2048` reached validation `123/136 = 90.44%` and test
+  `122/137 = 89.05%`; unified greedy `max_new_tokens=4096` reached validation
+  `126/136 = 92.65%` and test `129/137 = 94.16%`. Artifacts:
+  `/root/autodl-tmp/projects/grpo-direct-long/best116_validation_greedy_4096/validation-eval-report.json`
+  and
+  `/root/autodl-tmp/projects/grpo-direct-long/best116_test_greedy_4096/test-eval-report.json`.
+  Chinese record: `docs/experiments/direct_long_token_greedy_20260617.md`.
+- Long eval observability fix: `generate_checkpoint_outputs` now appends raw
+  outputs per batch and prints `generated x/y records`, so future long-token
+  evaluations can be monitored while running.
 
 ## 仍损坏或未验证
 
-- verifier-rerank eval support、harness updates 和 second-stage continuation
-  evidence 已通过本地验证；以最新 git commit 为代码事实源。
+- direct long-token eval support、verifier-rerank eval support、harness updates
+  和 second-stage continuation evidence 已通过本地验证；以最新 git commit 为代码事实源。
 - 本地未安装 `trl`，真实 GRPO 训练/评估仍只能在 AutoDL train env 验证。
 - 本地 `scripts/audit_sft_dataset.py` 因本地缺少 `transformers` 未运行；已用 repo-local JSONL + strict verifier 做替代数据审计。
 - AutoDL 直连 GitHub 不稳定；同步需要代理公式。
@@ -187,16 +201,16 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 - 归档状态：旧 `0002-sft-training-readiness` 和 `20260615-sft-audit-and-repair` 计划已移到 `plans/archive/`。
 - 临时工件：`data/processed/` 和 `outputs/` 是 ignored runtime artifacts，不应提交。
 - 训练状态：AutoDL 当前无 running train/eval/audit command；最近一次 GPU 检查为
-  `0%` utilization、`0 MiB / 49140 MiB` after continuation eval completed.
+  `0%` utilization、`0 MiB / 49140 MiB` after direct 4096 eval completed.
 
 ## 下一步最佳动作
 
 不要扩大 `beta0_none_25`、G8 10-step、`beta=0.002`、mixed pool、targeted SFT
 refresh、当前 close-bonus profile 或 hard-pool second-stage continuation。当前
-可展示强结果应优先走 verifier-rerank 报告，并在课程报告中清楚区分 greedy
-checkpoint 分数和 inference-time rerank 分数。若继续研究 greedy 提升，下一步应改变
-目标本身：例如更明确的停止/闭合策略、训练时 EOS/answer closure 建模，或把
-verifier-rerank 蒸馏为新的 SFT/RL 数据，而不是简单加 step/LR/beta。
+可展示主结果应优先报告 direct greedy `4096`，并把 verifier-rerank 作为更强但不同
+口径的 inference-time search-selection 结果。若继续研究 greedy 提升，下一步应改变
+目标本身：更明确的停止/闭合策略、训练时 EOS/answer closure 建模，或把长 token/采样
+成功轨迹蒸馏为更短 direct greedy 输出，而不是简单加 step/LR/beta。
 
 ## 命令
 

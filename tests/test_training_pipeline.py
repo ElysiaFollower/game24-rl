@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
+import types
 from pathlib import Path
 
 import yaml
@@ -297,6 +299,102 @@ def test_evaluate_checkpoint_api_accepts_training_mode_and_batch_size() -> None:
 
     assert "training_mode" in signature.parameters
     assert "batch_size" in signature.parameters
+
+
+def test_checkpoint_generation_writes_incremental_jsonl(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    manifest = build_split_manifest()
+    manifest["splits"]["validation"] = manifest["splits"]["validation"][:3]
+    manifest_path = tmp_path / "manifest.json"
+    output_path = tmp_path / "raw.jsonl"
+    write_manifest(manifest, manifest_path)
+    writes: list[int] = []
+    original_append_jsonl = __import__(
+        "game24_rl.evaluate",
+        fromlist=["append_jsonl"],
+    ).append_jsonl
+
+    class _FakeTokenizer:
+        eos_token = "<eos>"
+        eos_token_id = 0
+        pad_token = None
+        padding_side = "right"
+
+        @classmethod
+        def from_pretrained(cls, *_args, **_kwargs):
+            return cls()
+
+        def __call__(self, prompts, return_tensors=None, padding=False):
+            del return_tensors, padding
+            return _FakeInputs(len(prompts))
+
+        def decode(self, _tokens, skip_special_tokens=True):
+            del _tokens, skip_special_tokens
+            return "<answer>((8 - 2) * (7 - 3))</answer>"
+
+    class _FakeInputs(dict):
+        def __init__(self, batch_size: int):
+            super().__init__(input_ids=_FakeTensor(batch_size))
+
+        def to(self, _device):
+            return self
+
+    class _FakeTensor:
+        def __init__(self, batch_size: int):
+            self.shape = (batch_size, 1)
+            self.batch_size = batch_size
+
+    class _FakeModel:
+        device = "cpu"
+
+        @classmethod
+        def from_pretrained(cls, *_args, **_kwargs):
+            return cls()
+
+        def eval(self):
+            return None
+
+        def generate(self, **kwargs):
+            return [[0, 1] for _ in range(kwargs["input_ids"].batch_size)]
+
+    class _FakeInferenceMode:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *_args):
+            return False
+
+    def _recording_append(records, path):
+        original_append_jsonl(records, path)
+        writes.append(len(output_path.read_text(encoding="utf-8").splitlines()))
+
+    fake_transformers = types.SimpleNamespace(
+        AutoModelForCausalLM=_FakeModel,
+        AutoTokenizer=_FakeTokenizer,
+    )
+    fake_torch = types.SimpleNamespace(inference_mode=lambda: _FakeInferenceMode())
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr("game24_rl.evaluate.append_jsonl", _recording_append)
+
+    generate_checkpoint_outputs(
+        manifest_path=manifest_path,
+        split="validation",
+        output_path=output_path,
+        model_name="fake-model",
+        checkpoint="fake-checkpoint",
+        decoding=DecodingConfig(max_new_tokens=4),
+        training_mode="full",
+        batch_size=2,
+    )
+
+    raw_records = output_path.read_text(encoding="utf-8").splitlines()
+    assert len(raw_records) == 3
+    assert writes == [2, 3]
+    assert "generated 2/3 records" in capsys.readouterr().out
 
 
 def _write_test_config(

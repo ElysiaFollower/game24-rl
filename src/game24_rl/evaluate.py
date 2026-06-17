@@ -77,6 +77,17 @@ def write_jsonl(records: Iterable[dict[str, Any]], path: str | Path) -> None:
             file.write(json.dumps(record, sort_keys=True) + "\n")
 
 
+def append_jsonl(records: Iterable[dict[str, Any]], path: str | Path) -> None:
+    """Appends dictionaries as JSON Lines."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as file:
+        for record in records:
+            file.write(json.dumps(record, sort_keys=True) + "\n")
+        file.flush()
+
+
 def evaluate_output_records(
     records: Iterable[dict[str, Any]],
 ) -> tuple[EvaluationMetricSummary, list[dict[str, Any]]]:
@@ -415,7 +426,10 @@ def generate_checkpoint_outputs(
         raise ValueError(f"unsupported training_mode: {training_mode}")
     model.eval()
 
-    raw_outputs = []
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("", encoding="utf-8")
+    generated_count = 0
     for start in range(0, len(records), batch_size):
         batch = records[start : start + batch_size]
         prompts = [
@@ -433,24 +447,46 @@ def generate_checkpoint_outputs(
                 top_p=decoding.top_p,
                 pad_token_id=tokenizer.eos_token_id,
             )
+        batch_outputs = []
         for index, record in enumerate(batch):
             output = tokenizer.decode(
                 generated[index][input_width:],
                 skip_special_tokens=True,
             )
-            raw_outputs.append(
-                {
-                    "schema_version": RAW_OUTPUT_SCHEMA_VERSION,
-                    "id": record["id"],
-                    "numbers": record["numbers"],
-                    "target": record["target"],
-                    "prompt": prompts[index],
-                    "output": output,
-                    "source": f"{training_mode}_checkpoint_generation",
-                }
+            batch_outputs.append(
+                build_raw_output_record(
+                    record=record,
+                    prompt=prompts[index],
+                    output=output,
+                    training_mode=training_mode,
+                )
             )
+        append_jsonl(batch_outputs, output_path)
+        generated_count += len(batch_outputs)
+        print(
+            f"generated {generated_count}/{len(records)} records",
+            flush=True,
+        )
 
-    write_jsonl(raw_outputs, output_path)
+
+def build_raw_output_record(
+    *,
+    record: dict[str, Any],
+    prompt: str,
+    output: str,
+    training_mode: str,
+) -> dict[str, Any]:
+    """Builds a raw-output artifact record for model generation."""
+
+    return {
+        "schema_version": RAW_OUTPUT_SCHEMA_VERSION,
+        "id": record["id"],
+        "numbers": record["numbers"],
+        "target": record["target"],
+        "prompt": prompt,
+        "output": output,
+        "source": f"{training_mode}_checkpoint_generation",
+    }
 
 
 def _detail_record(
