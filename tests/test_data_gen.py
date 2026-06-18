@@ -61,6 +61,14 @@ def test_qwen_chat_prompt_has_assistant_boundary() -> None:
     assert prompt.endswith("<|im_start|>assistant\n")
 
 
+def test_qwen_chat_target_prompt_includes_target() -> None:
+    prompt = format_prompt((44, 19, 35), target=98, prompt_style="qwen_chat_target")
+
+    assert prompt.startswith("<|im_start|>system\n")
+    assert "<|im_start|>user\nNumbers: 44 19 35\nTarget: 98\n<|im_end|>\n" in prompt
+    assert prompt.endswith("<|im_start|>assistant\n")
+
+
 def test_checked_success_trace_keeps_verifier_contract() -> None:
     records = build_sft_records(
         [(8, 2, 7, 3)],
