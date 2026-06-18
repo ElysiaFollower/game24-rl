@@ -14,7 +14,18 @@ from game24_rl.evaluate import (
     evaluate_raw_outputs_file,
     evaluate_solver_dry_run,
     generate_checkpoint_outputs,
+    write_verifier_rerank_report,
 )
+from game24_rl.grpo import (
+    GrpoCompatibilityConfig,
+    GrpoPoolGateConfig,
+    audit_rollout_details_file,
+    build_grpo_probe_metadata,
+    build_prompt_dataset_from_pool,
+    run_grpo_dry_run,
+    select_prompt_ids_from_details,
+)
+from game24_rl.rewards import reward_completions
 from game24_rl.train_sft import run_sft
 
 
@@ -129,7 +140,16 @@ def eval_checkpoint_main() -> None:
     )
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-1.5B-Instruct")
     parser.add_argument("--checkpoint", help="LoRA checkpoint path.")
+    parser.add_argument("--training-mode", choices=["lora", "full"], default="lora")
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--raw-outputs", help="Existing raw-output JSONL to score.")
+    parser.add_argument(
+        "--sampled-raw-outputs",
+        help=(
+            "Sampled candidate raw outputs for greedy-then-verifier-rerank "
+            "evaluation. Requires --raw-outputs."
+        ),
+    )
     parser.add_argument(
         "--solver-dry-run",
         action="store_true",
@@ -161,6 +181,21 @@ def eval_checkpoint_main() -> None:
             model_name="exact-solver-dry-run",
             prompt_style=args.prompt_style,
         )
+    elif args.sampled_raw_outputs:
+        if not args.raw_outputs:
+            raise SystemExit("--sampled-raw-outputs requires --raw-outputs")
+        report = write_verifier_rerank_report(
+            greedy_raw_outputs_path=args.raw_outputs,
+            sampled_raw_outputs_path=args.sampled_raw_outputs,
+            output_dir=output_dir,
+            model_name=args.model_name,
+            checkpoint=args.checkpoint,
+            split_manifest=args.manifest,
+            split=args.split,
+            greedy_decoding=DecodingConfig(max_new_tokens=args.max_new_tokens),
+            sampled_decoding=decoding,
+            generation_prompt_style=args.prompt_style,
+        )
     else:
         raw_outputs = Path(args.raw_outputs) if args.raw_outputs else None
         if raw_outputs is None:
@@ -179,6 +214,8 @@ def eval_checkpoint_main() -> None:
                 decoding=decoding,
                 limit=args.limit,
                 prompt_style=args.prompt_style,
+                training_mode=args.training_mode,
+                batch_size=args.batch_size,
             )
         report = evaluate_raw_outputs_file(
             raw_outputs_path=raw_outputs,
@@ -198,3 +235,479 @@ def eval_checkpoint_main() -> None:
             **metrics
         )
     )
+
+
+def train_grpo_main() -> None:
+    """Runs safe GRPO preparation steps or fails fast before real training."""
+
+    parser = argparse.ArgumentParser(description=train_grpo_main.__doc__)
+    parser.add_argument(
+        "--manifest",
+        default="data/processed/splits/standard-game24-v1.json",
+        help="Split manifest path.",
+    )
+    parser.add_argument("--split", default="train")
+    parser.add_argument(
+        "--output-dir",
+        default="outputs/experiments/grpo_pilot_v1",
+        help="Directory for GRPO artifacts.",
+    )
+    parser.add_argument("--prompt-style", default="qwen_chat")
+    parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--compat-probe", action="store_true")
+    parser.add_argument("--train", action="store_true")
+    parser.add_argument("--model-name-or-path")
+    parser.add_argument(
+        "--initial-adapter",
+        help=(
+            "Optional existing LoRA adapter to load as the trainable starting "
+            "point for second-stage GRPO."
+        ),
+    )
+    parser.add_argument("--pool-manifest")
+    parser.add_argument("--max-steps", type=int, default=25)
+    parser.add_argument("--save-steps", type=int, default=25)
+    parser.add_argument("--logging-steps", type=int, default=1)
+    parser.add_argument("--max-prompt-length", type=int, default=256)
+    parser.add_argument("--max-completion-length", type=int, default=1024)
+    parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
+    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--learning-rate", type=float, default=5e-6)
+    parser.add_argument("--beta", type=float, default=0.0)
+    parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
+    parser.add_argument(
+        "--reward-profile",
+        choices=["strict", "close_bonus", "closure_strict"],
+        default="strict",
+    )
+    parser.add_argument("--peft-mode", choices=["none", "lora"], default="lora")
+    parser.add_argument("--lora-rank", type=int, default=16)
+    parser.add_argument("--lora-alpha", type=int, default=32)
+    parser.add_argument("--lora-dropout", type=float, default=0.05)
+    parser.add_argument(
+        "--mask-truncated-completions",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--remove-unused-columns",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    args = parser.parse_args()
+
+    if args.dry_run:
+        result = run_grpo_dry_run(
+            manifest_path=args.manifest,
+            split=args.split,
+            output_dir=args.output_dir,
+            prompt_style=args.prompt_style,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return
+
+    if args.compat_probe:
+        result = _run_grpo_compat_probe(args)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        if not result["passed"]:
+            raise SystemExit(1)
+        return
+
+    if args.train:
+        result = _run_real_grpo(args)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return
+
+    raise SystemExit(
+        "Specify one of --dry-run, --compat-probe, or --train. Run --dry-run "
+        "and --compat-probe before --train."
+    )
+
+
+def build_grpo_pool_main() -> None:
+    """Audits sampled rollout details and writes a GRPO pool manifest."""
+
+    parser = argparse.ArgumentParser(description=build_grpo_pool_main.__doc__)
+    parser.add_argument("--details", required=True, help="Rollout details JSON path.")
+    parser.add_argument("--output", required=True, help="Output pool manifest JSON.")
+    parser.add_argument("--split", default="train")
+    parser.add_argument("--checkpoint", help="Checkpoint used for rollout sampling.")
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--num-generations", type=int)
+    parser.add_argument("--temperature", type=float)
+    parser.add_argument("--top-p", type=float)
+    parser.add_argument("--max-new-tokens", type=int)
+    parser.add_argument("--min-pool-size", type=int, default=200)
+    parser.add_argument("--min-mixed-group-rate", type=float, default=0.25)
+    parser.add_argument("--max-zero-std-group-rate", type=float, default=0.75)
+    parser.add_argument("--min-correct-truncation-mixed", type=int, default=50)
+    parser.add_argument("--max-all-wrong-rate", type=float, default=0.25)
+    parser.add_argument(
+        "--select-min-correct",
+        type=int,
+        help="Optional lower bound for selected positive samples per prompt group.",
+    )
+    parser.add_argument(
+        "--select-max-correct",
+        type=int,
+        help="Optional upper bound for selected positive samples per prompt group.",
+    )
+    parser.add_argument(
+        "--select-require-truncation",
+        action="store_true",
+        help="Select only groups with at least one answer-contract truncation.",
+    )
+    args = parser.parse_args()
+
+    gate = GrpoPoolGateConfig(
+        min_pool_size=args.min_pool_size,
+        min_mixed_group_rate=args.min_mixed_group_rate,
+        max_zero_std_group_rate=args.max_zero_std_group_rate,
+        min_correct_truncation_mixed=args.min_correct_truncation_mixed,
+        max_all_wrong_rate=args.max_all_wrong_rate,
+    )
+    metadata = {
+        "split": args.split,
+        "checkpoint": args.checkpoint,
+        "seed": args.seed,
+        "num_generations": args.num_generations,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "max_new_tokens": args.max_new_tokens,
+    }
+    audit = audit_rollout_details_file(
+        args.details,
+        args.output,
+        gate=gate,
+        metadata=metadata,
+    )
+    if (
+        args.select_min_correct is not None
+        or args.select_max_correct is not None
+        or args.select_require_truncation
+    ):
+        details = json.loads(Path(args.details).read_text(encoding="utf-8"))
+        selected_ids = select_prompt_ids_from_details(
+            details,
+            min_correct=args.select_min_correct,
+            max_correct=args.select_max_correct,
+            require_truncation=args.select_require_truncation,
+        )
+        output_path = Path(args.output)
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        payload["selected_prompt_ids"] = selected_ids
+        payload["selection_filter"] = {
+            "min_correct": args.select_min_correct,
+            "max_correct": args.select_max_correct,
+            "require_truncation": args.select_require_truncation,
+            "selected_count": len(selected_ids),
+        }
+        output_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    print(json.dumps(audit.as_dict(), indent=2, sort_keys=True))
+    if not audit.passed:
+        raise SystemExit(1)
+
+
+def _run_grpo_compat_probe(args: argparse.Namespace) -> dict[str, object]:
+    try:
+        import trl  # type: ignore[import-not-found]  # pylint: disable=import-outside-toplevel
+        from trl import GRPOConfig  # type: ignore[import-not-found]  # noqa: PLC0415
+    except ImportError as exc:
+        return {
+            "schema_version": "game24-grpo-compat-probe-v1",
+            "passed": False,
+            "error": f"TRL is not installed or cannot be imported: {exc}",
+        }
+
+    supported_fields = set(getattr(GRPOConfig, "__dataclass_fields__", {}))
+    metadata = build_grpo_probe_metadata(
+        GrpoCompatibilityConfig(
+            beta=args.beta,
+            scale_rewards=args.scale_rewards,
+            mask_truncated_completions=args.mask_truncated_completions,
+            remove_unused_columns=args.remove_unused_columns,
+        ),
+        trl_version=getattr(trl, "__version__", None),
+        supported_fields=supported_fields,
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if metadata["passed"]:
+        try:
+            resolved_config = GRPOConfig(
+                output_dir=str(output_dir),
+                beta=args.beta,
+                scale_rewards=args.scale_rewards,
+                mask_truncated_completions=args.mask_truncated_completions,
+                remove_unused_columns=args.remove_unused_columns,
+                loss_type="dr_grpo",
+            )
+        except Exception as exc:  # pragma: no cover - depends on remote TRL version.
+            metadata["passed"] = False
+            metadata["error"] = f"GRPOConfig rejected probe settings: {exc}"
+        else:
+            metadata["resolved_config"] = {
+                "beta": getattr(resolved_config, "beta", None),
+                "scale_rewards": getattr(resolved_config, "scale_rewards", None),
+                "mask_truncated_completions": getattr(
+                    resolved_config,
+                    "mask_truncated_completions",
+                    None,
+                ),
+                "remove_unused_columns": getattr(
+                    resolved_config,
+                    "remove_unused_columns",
+                    None,
+                ),
+                "loss_type": getattr(resolved_config, "loss_type", None),
+            }
+    (output_dir / "compat-probe.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return metadata
+
+
+def _run_real_grpo(args: argparse.Namespace) -> dict[str, object]:
+    if not args.model_name_or_path:
+        raise SystemExit("--model-name-or-path is required for --train")
+    if not args.pool_manifest:
+        raise SystemExit("--pool-manifest is required for --train")
+
+    try:
+        from datasets import (  # type: ignore[import-not-found]  # pylint: disable=import-outside-toplevel
+            Dataset,
+        )
+        from trl import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            GRPOConfig,
+            GRPOTrainer,
+        )
+    except ImportError as exc:
+        raise SystemExit(f"GRPO training dependencies are unavailable: {exc}") from exc
+
+    prompt_records = build_prompt_dataset_from_pool(
+        manifest_path=args.manifest,
+        pool_manifest_path=args.pool_manifest,
+        split=args.split,
+        prompt_style=args.prompt_style,
+        limit=args.limit,
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    config_kwargs, skipped_config_kwargs = _build_grpo_config_kwargs(
+        supported_fields=set(getattr(GRPOConfig, "__dataclass_fields__", {})),
+        output_dir=str(output_dir),
+        beta=args.beta,
+        scale_rewards=args.scale_rewards,
+        mask_truncated_completions=args.mask_truncated_completions,
+        remove_unused_columns=args.remove_unused_columns,
+        max_completion_length=args.max_completion_length,
+        num_generations=args.num_generations,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        learning_rate=args.learning_rate,
+        max_steps=args.max_steps,
+        save_steps=args.save_steps,
+        logging_steps=args.logging_steps,
+    )
+    config = GRPOConfig(**config_kwargs)
+    metadata = {
+        "schema_version": "game24-grpo-train-run-v1",
+        "model_name_or_path": args.model_name_or_path,
+        "initial_adapter": args.initial_adapter,
+        "manifest": args.manifest,
+        "split": args.split,
+        "pool_manifest": args.pool_manifest,
+        "prompt_records": len(prompt_records),
+        "output_dir": str(output_dir),
+        "beta": args.beta,
+        "scale_rewards": args.scale_rewards,
+        "reward_profile": args.reward_profile,
+        "mask_truncated_completions": args.mask_truncated_completions,
+        "remove_unused_columns": args.remove_unused_columns,
+        "max_steps": args.max_steps,
+        "num_generations": args.num_generations,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "peft_mode": args.peft_mode,
+        "lora_rank": args.lora_rank,
+        "lora_alpha": args.lora_alpha,
+        "lora_dropout": args.lora_dropout,
+        "max_prompt_length_requested": args.max_prompt_length,
+        "max_prompt_length_applied_by_trl": False,
+        "grpo_config_kwargs": config_kwargs,
+        "skipped_grpo_config_kwargs": skipped_config_kwargs,
+    }
+    (output_dir / "train-run-metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    peft_config = _build_grpo_peft_config(args)
+    model = args.model_name_or_path
+    processing_class = None
+    if args.initial_adapter:
+        model, processing_class = _load_trainable_initial_adapter(args)
+        peft_config = None
+    reward_func = _build_reward_func(args.reward_profile)
+    trainer_kwargs = {
+        "model": model,
+        "reward_funcs": reward_func,
+        "args": config,
+        "train_dataset": Dataset.from_list(prompt_records),
+        "peft_config": peft_config,
+    }
+    if processing_class is not None:
+        trainer_kwargs["processing_class"] = processing_class
+    trainer = GRPOTrainer(**trainer_kwargs)
+    trainer.train()
+    trainer.save_model(str(output_dir / "final"))
+    metadata["status"] = "complete"
+    (output_dir / "train-run-metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return metadata
+
+
+def _load_trainable_initial_adapter(args: argparse.Namespace) -> tuple[object, object]:
+    """Loads an existing LoRA adapter as the trainable GRPO starting point."""
+
+    if args.peft_mode != "lora":
+        raise SystemExit("--initial-adapter requires --peft-mode lora")
+    try:
+        import torch  # type: ignore[import-not-found]  # noqa: PLC0415
+        from peft import PeftModel  # type: ignore[import-not-found]  # noqa: PLC0415
+        from transformers import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            AutoModelForCausalLM,
+            AutoTokenizer,
+        )
+    except ImportError as exc:
+        raise SystemExit(
+            f"Transformers/PEFT/Torch are required for --initial-adapter: {exc}"
+        ) from exc
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name_or_path,
+        trust_remote_code=True,
+    )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    base_model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+    )
+    model = PeftModel.from_pretrained(
+        base_model,
+        args.initial_adapter,
+        is_trainable=True,
+    )
+    return model, tokenizer
+
+
+def _build_reward_func(reward_profile: str) -> object:
+    """Builds a TRL-compatible reward function with fixed experiment profile."""
+
+    def _reward_func(**kwargs: object) -> list[float]:
+        return reward_completions(
+            **kwargs,
+            reward_profile=reward_profile,
+        )
+
+    _reward_func.__name__ = f"reward_completions_{reward_profile}"
+    return _reward_func
+
+
+def _build_grpo_peft_config(args: argparse.Namespace) -> object | None:
+    """Builds optional LoRA config for GRPO probes."""
+
+    if args.peft_mode == "none":
+        return None
+    try:
+        from peft import LoraConfig  # type: ignore[import-not-found]  # noqa: PLC0415
+    except ImportError as exc:
+        raise SystemExit(f"PEFT is required for --peft-mode lora: {exc}") from exc
+    return LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        target_modules="all-linear",
+        task_type="CAUSAL_LM",
+    )
+
+
+def _build_grpo_config_kwargs(
+    *,
+    supported_fields: set[str],
+    output_dir: str,
+    beta: float,
+    scale_rewards: str,
+    mask_truncated_completions: bool,
+    remove_unused_columns: bool,
+    max_completion_length: int,
+    num_generations: int,
+    gradient_accumulation_steps: int,
+    temperature: float,
+    top_p: float,
+    learning_rate: float,
+    max_steps: int,
+    save_steps: int,
+    logging_steps: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Builds GRPOConfig kwargs for the installed TRL version.
+
+    TRL 1.6.0 no longer exposes ``max_prompt_length``. Prompts in this project
+    are short, so prompt limiting is recorded in metadata instead of being
+    forced through an unsupported config field.
+    """
+
+    required = {
+        "output_dir": output_dir,
+        "beta": beta,
+        "scale_rewards": scale_rewards,
+        "mask_truncated_completions": mask_truncated_completions,
+        "remove_unused_columns": remove_unused_columns,
+        "loss_type": "dr_grpo",
+        "max_completion_length": max_completion_length,
+        "num_generations": num_generations,
+        "learning_rate": learning_rate,
+        "max_steps": max_steps,
+        "save_steps": save_steps,
+        "logging_steps": logging_steps,
+        "per_device_train_batch_size": 1,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "bf16": True,
+        "report_to": ["tensorboard"],
+    }
+    optional = {
+        "temperature": temperature,
+        "top_p": top_p,
+    }
+
+    missing_required = sorted(set(required) - supported_fields)
+    if missing_required:
+        raise SystemExit(
+            "Installed TRL GRPOConfig does not support required fields: "
+            + ", ".join(missing_required)
+        )
+
+    config_kwargs = dict(required)
+    skipped = {}
+    for name, value in optional.items():
+        if name in supported_fields:
+            config_kwargs[name] = value
+        else:
+            skipped[name] = value
+    return config_kwargs, skipped

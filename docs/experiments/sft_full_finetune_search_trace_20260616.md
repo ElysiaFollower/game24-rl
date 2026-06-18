@@ -135,6 +135,23 @@ Local analysis artifact:
 - The current SFT model is strong enough to serve as the project fallback and as
   a credible warm start for the next optimization stage.
 
+## Follow-Up Idea: Canonical DFS Trace
+
+The rollback/search trace recipe is useful as a strong baseline, but it may not
+be the best teacher format. A possible follow-up is to replace random rollback
+search with a more canonical DFS trace: fixed pair/operator order, explicit
+state deduplication, shorter successful paths, and an immediate answer closure
+once a solution is found.
+
+Potential benefit: this may teach more systematic search and reduce the current
+failure mode where the model keeps emitting long rollback traces until the token
+budget is exhausted.
+
+Potential risk: a deterministic DFS teacher may make the model imitate a rigid
+search procedure, reducing the flexible search behavior that random traces may
+encourage. Because this is speculative and not required to reproduce the strong
+SFT baseline, it is not part of the current official-data rerun.
+
 ## Generation Budget Interpretation
 
 The `max_new_tokens=1024` cap is an important evaluation choice, not a neutral

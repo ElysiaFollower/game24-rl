@@ -25,9 +25,11 @@ train = [
 ]
 
 [project.scripts]
+game24-build-grpo-pool = "game24_rl.cli:build_grpo_pool_main"
 game24-build-sft-v1 = "game24_rl.cli:build_sft_v1_main"
 game24-eval-checkpoint = "game24_rl.cli:eval_checkpoint_main"
 game24-make-splits = "game24_rl.cli:make_splits_main"
+game24-train-grpo = "game24_rl.cli:train_grpo_main"
 game24-train-sft = "game24_rl.cli:train_sft_main"
 
 [build-system]
