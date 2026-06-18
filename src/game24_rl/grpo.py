@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from game24_rl.data_gen import PROMPT_STYLE_QWEN_CHAT, format_prompt
 from game24_rl.datasets import read_manifest
-from game24_rl.rewards import GRPO_REWARD_VERSION, reward_completions
+from game24_rl.rewards import score_completion
 
 GRPO_POOL_SCHEMA_VERSION = "game24-grpo-pool-v1"
 GRPO_PROBE_SCHEMA_VERSION = "game24-grpo-compat-probe-v1"
@@ -259,13 +259,15 @@ def run_grpo_dry_run(
         "<answer>((8-2)*(7-3))</answer>",
         "<think>still searching",
     ]
-    sample_rewards = reward_completions(
-        completions=sample_completions,
-        numbers=[[8, 2, 7, 3], [8, 2, 7, 3]],
-        target=[24, 24],
-        id=["dry-run-ok", "dry-run-missing"],
-        reward_profile=reward_profile,
-    )
+    sample_scores = [
+        score_completion(
+            completion,
+            numbers=[8, 2, 7, 3],
+            target=24,
+            reward_profile=reward_profile,
+        )
+        for completion in sample_completions
+    ]
     prompts_path = output_path / f"{split}-prompts.jsonl"
     with prompts_path.open("w", encoding="utf-8") as file:
         for record in prompt_records:
@@ -279,8 +281,8 @@ def run_grpo_dry_run(
         "prompt_records": len(prompt_records),
         "prompts_path": str(prompts_path),
         "reward_profile": reward_profile,
-        "reward_version": GRPO_REWARD_VERSION,
-        "sample_rewards": sample_rewards,
+        "reward_version": sample_scores[0].reward_version,
+        "sample_rewards": [score.reward for score in sample_scores],
         "loads_model_weights": False,
     }
     metadata_path = output_path / "dry-run-metadata.json"
