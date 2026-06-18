@@ -11,12 +11,18 @@ from game24_rl.verifier import VerificationResult, verify_answer
 GRPO_REWARD_VERSION = "strict-correctness-closure-v1"
 GRPO_CLOSE_BONUS_REWARD_VERSION = "strict-correctness-close-bonus-v1"
 GRPO_CLOSURE_STRICT_REWARD_VERSION = "strict-correctness-closure-strict-v1"
+GRPO_CLOSURE_CONTROL_SMOOTH_REWARD_VERSION = "closure-control-smooth-v1"
 
 CORRECT_REWARD = 1.0
 MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.2
 PARSEABLE_WRONG_ANSWER_REWARD = -0.1
 STRICT_MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.5
 STRICT_PARSEABLE_WRONG_ANSWER_REWARD = -0.2
+SMOOTH_MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.3
+SMOOTH_SYNTAX_OR_UNSUPPORTED_REWARD = -0.3
+SMOOTH_MULTIPLE_OR_WRONG_ANSWER_REWARD = -0.35
+SMOOTH_CLOSE_BONUS_WEIGHT = 0.25
+SMOOTH_CLOSE_TOKEN_BUDGET = 4096
 EARLY_CLOSE_BONUS = 0.1
 ON_TIME_CLOSE_BONUS = 0.05
 
@@ -37,6 +43,8 @@ class AnswerClosureMetrics:
     first_answer_close_token: int | None
     answer_close_token_index: int | None
     tokens_after_answer: int | None
+    answer_open_count: int
+    answer_close_count: int
 
     def as_dict(self) -> dict[str, Any]:
         """Returns JSON-serializable metrics."""
@@ -91,6 +99,8 @@ def score_completion(
         reward_version = GRPO_CLOSE_BONUS_REWARD_VERSION
     if reward_profile == "closure_strict":
         reward_version = GRPO_CLOSURE_STRICT_REWARD_VERSION
+    if reward_profile == "closure_control_smooth":
+        reward_version = GRPO_CLOSURE_CONTROL_SMOOTH_REWARD_VERSION
     return GrpoRewardScore(
         reward=reward,
         reward_reason=reward_reason,
@@ -141,6 +151,8 @@ def answer_closure_metrics(completion: str) -> AnswerClosureMetrics:
     tokens = completion.split()
     first_open = _first_token_containing(tokens, "<answer>")
     first_close = _first_token_containing(tokens, "</answer>")
+    open_count = completion.count("<answer>")
+    close_count = completion.count("</answer>")
     has_open = first_open is not None
     has_close = first_close is not None
     has_complete = (
@@ -162,6 +174,8 @@ def answer_closure_metrics(completion: str) -> AnswerClosureMetrics:
         first_answer_close_token=first_close,
         answer_close_token_index=first_close,
         tokens_after_answer=tokens_after,
+        answer_open_count=open_count,
+        answer_close_count=close_count,
     )
 
 
@@ -176,9 +190,13 @@ def _reward_from_verification(
             return _reward_valid_with_close_bonus(closure)
         if reward_profile == "closure_strict":
             return _reward_valid_with_closure_strict(closure)
+        if reward_profile == "closure_control_smooth":
+            return _reward_valid_with_closure_control_smooth(closure)
         if reward_profile != "strict":
             raise ValueError(f"unknown reward profile: {reward_profile}")
         return CORRECT_REWARD, "strict_correct"
+    if reward_profile == "closure_control_smooth":
+        return _reward_invalid_with_closure_control_smooth(verification, closure)
     if not closure.has_complete_answer or verification.reason.startswith(
         "answer_contract"
     ):
@@ -221,6 +239,53 @@ def _reward_valid_with_closure_strict(
             "closure_strict_correct_close_le_512",
         )
     return CORRECT_REWARD, "closure_strict_correct_late_close"
+
+
+def _reward_valid_with_closure_control_smooth(
+    closure: AnswerClosureMetrics,
+) -> tuple[float, str]:
+    if closure.answer_close_token_index is None:
+        return CORRECT_REWARD, "closure_control_smooth_correct_no_close_index"
+    close_token = closure.answer_close_token_index + 1
+    reward = CORRECT_REWARD + SMOOTH_CLOSE_BONUS_WEIGHT * (
+        1 - close_token / SMOOTH_CLOSE_TOKEN_BUDGET
+    )
+    return reward, "closure_control_smooth_correct"
+
+
+def _reward_invalid_with_closure_control_smooth(
+    verification: VerificationResult,
+    closure: AnswerClosureMetrics,
+) -> tuple[float, str]:
+    if verification.reason.startswith("answer_contract"):
+        if closure.answer_open_count > 1 or closure.answer_close_count > 1:
+            return (
+                SMOOTH_MULTIPLE_OR_WRONG_ANSWER_REWARD,
+                "closure_control_smooth_multiple_answer_blocks",
+            )
+        return (
+            SMOOTH_MISSING_OR_INCOMPLETE_ANSWER_REWARD,
+            "closure_control_smooth_no_complete_answer",
+        )
+    if verification.reason.startswith(("syntax_error", "unsupported_expression")):
+        return (
+            SMOOTH_SYNTAX_OR_UNSUPPORTED_REWARD,
+            "closure_control_smooth_syntax_or_unsupported",
+        )
+    if verification.reason in {"division_by_zero"}:
+        return (
+            SMOOTH_SYNTAX_OR_UNSUPPORTED_REWARD,
+            "closure_control_smooth_syntax_or_unsupported",
+        )
+    if verification.reason in {"wrong_numbers", "wrong_value"}:
+        return (
+            SMOOTH_MULTIPLE_OR_WRONG_ANSWER_REWARD,
+            f"closure_control_smooth_{verification.reason}",
+        )
+    return (
+        SMOOTH_MULTIPLE_OR_WRONG_ANSWER_REWARD,
+        "closure_control_smooth_parseable_wrong_answer",
+    )
 
 
 def _first_token_containing(tokens: Sequence[str], needle: str) -> int | None:

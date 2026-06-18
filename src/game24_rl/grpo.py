@@ -226,7 +226,11 @@ def build_prompt_dataset(
             "id": record["id"],
             "numbers": record["numbers"],
             "target": record.get("target", manifest.get("target", 24)),
-            "prompt": format_prompt(record["numbers"], prompt_style=prompt_style),
+            "prompt": format_prompt(
+                record["numbers"],
+                target=record.get("target", manifest.get("target", 24)),
+                prompt_style=prompt_style,
+            ),
         }
         for record in records
     ]
@@ -238,6 +242,7 @@ def run_grpo_dry_run(
     split: str = "train",
     output_dir: str | Path,
     prompt_style: str = PROMPT_STYLE_QWEN_CHAT,
+    reward_profile: str = "strict",
     limit: int = 8,
 ) -> dict[str, Any]:
     """Writes prompt-only GRPO dry-run artifacts without loading model weights."""
@@ -251,7 +256,7 @@ def run_grpo_dry_run(
         limit=limit,
     )
     sample_completions = [
-        "<answer>((8 - 2) * (7 - 3))</answer>",
+        "<answer>((8-2)*(7-3))</answer>",
         "<think>still searching",
     ]
     sample_rewards = reward_completions(
@@ -259,6 +264,7 @@ def run_grpo_dry_run(
         numbers=[[8, 2, 7, 3], [8, 2, 7, 3]],
         target=[24, 24],
         id=["dry-run-ok", "dry-run-missing"],
+        reward_profile=reward_profile,
     )
     prompts_path = output_path / f"{split}-prompts.jsonl"
     with prompts_path.open("w", encoding="utf-8") as file:
@@ -272,6 +278,7 @@ def run_grpo_dry_run(
         "prompt_style": prompt_style,
         "prompt_records": len(prompt_records),
         "prompts_path": str(prompts_path),
+        "reward_profile": reward_profile,
         "reward_version": GRPO_REWARD_VERSION,
         "sample_rewards": sample_rewards,
         "loads_model_weights": False,

@@ -2,6 +2,7 @@
 
 from game24_rl.rewards import (
     GRPO_CLOSE_BONUS_REWARD_VERSION,
+    GRPO_CLOSURE_CONTROL_SMOOTH_REWARD_VERSION,
     GRPO_CLOSURE_STRICT_REWARD_VERSION,
     GRPO_REWARD_VERSION,
     answer_closure_metrics,
@@ -92,6 +93,74 @@ def test_closure_strict_profile_penalizes_unclosed_search_more() -> None:
     assert wrong.reward_reason == "closure_strict_parseable_wrong_answer"
 
 
+def test_closure_control_smooth_rewards_correct_answer_with_continuous_close_bonus() -> None:
+    early = score_completion(
+        "<answer>((8-2)*(7-3))</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+    late_output = " ".join(
+        ["scratch"] * 1024 + ["<answer>((8 - 2) * (7 - 3))</answer>"]
+    )
+    late = score_completion(
+        late_output,
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+
+    assert early.reward_version == GRPO_CLOSURE_CONTROL_SMOOTH_REWARD_VERSION
+    assert early.reward_reason == "closure_control_smooth_correct"
+    assert early.reward == 1.0 + 0.25 * (1 - 1 / 4096)
+    assert late.reward == 1.0 + 0.25 * (1 - 1031 / 4096)
+    assert late.reward > 1.0
+
+
+def test_closure_control_smooth_uses_fixed_error_rewards() -> None:
+    missing = score_completion(
+        "<think>still searching",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+    multiple = score_completion(
+        "<answer>8 + 2 + 7 + 3</answer><answer>8 + 2 + 7 + 3</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+    syntax = score_completion(
+        "<answer>((8 - 2) * (7 - 3)</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+    wrong_numbers = score_completion(
+        "<answer>(8 * 3)</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+    wrong_value = score_completion(
+        "<answer>8 + 2 + 7 + 3</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_control_smooth",
+    )
+
+    assert missing.reward == -0.3
+    assert missing.reward_reason == "closure_control_smooth_no_complete_answer"
+    assert multiple.reward == -0.35
+    assert multiple.reward_reason == "closure_control_smooth_multiple_answer_blocks"
+    assert syntax.reward == -0.3
+    assert syntax.reward_reason == "closure_control_smooth_syntax_or_unsupported"
+    assert wrong_numbers.reward == -0.35
+    assert wrong_numbers.reward_reason == "closure_control_smooth_wrong_numbers"
+    assert wrong_value.reward == -0.35
+    assert wrong_value.reward_reason == "closure_control_smooth_wrong_value"
+
+
 def test_reward_completions_accepts_trl_style_extra_columns() -> None:
     rewards = reward_completions(
         completions=[
@@ -116,3 +185,5 @@ def test_answer_closure_metrics_tracks_close_and_trailing_text() -> None:
     assert metrics.has_complete_answer is True
     assert metrics.answer_close_token_index is not None
     assert metrics.tokens_after_answer == 2
+    assert metrics.answer_open_count == 1
+    assert metrics.answer_close_count == 1

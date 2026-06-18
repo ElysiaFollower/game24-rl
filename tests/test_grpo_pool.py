@@ -1,6 +1,8 @@
 """Tests for GRPO active-pool audit gates and probe metadata."""
 
 import json
+import subprocess
+import sys
 from argparse import Namespace
 from pathlib import Path
 
@@ -182,11 +184,11 @@ def test_initial_adapter_requires_lora_peft_mode() -> None:
 
 
 def test_build_reward_func_applies_fixed_profile() -> None:
-    reward_func = _build_reward_func("closure_strict")
+    reward_func = _build_reward_func("closure_control_smooth")
 
     rewards = reward_func(
         completions=[
-            "<answer>((8 - 2) * (7 - 3))</answer>",
+            "<answer>((8-2)*(7-3))</answer>",
             "<think>still searching",
             "<answer>8 + 2 + 7 + 3</answer>",
         ],
@@ -194,8 +196,8 @@ def test_build_reward_func_applies_fixed_profile() -> None:
         target=[24, 24, 24],
     )
 
-    assert rewards == [1.1, -0.5, -0.2]
-    assert reward_func.__name__ == "reward_completions_closure_strict"
+    assert rewards == [1.0 + 0.25 * (1 - 1 / 4096), -0.3, -0.35]
+    assert reward_func.__name__ == "reward_completions_closure_control_smooth"
 
 
 def test_select_prompt_ids_from_details_filters_high_signal_groups() -> None:
@@ -231,6 +233,69 @@ def test_grpo_dry_run_writes_prompt_and_reward_artifacts(tmp_path: Path) -> None
     assert result["sample_rewards"] == [1.0, -0.2]
     assert Path(result["prompts_path"]).exists()
     assert (tmp_path / "grpo" / "dry-run-metadata.json").exists()
+
+
+def test_grpo_dry_run_uses_requested_reward_profile(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(build_split_manifest(), manifest_path)
+
+    result = run_grpo_dry_run(
+        manifest_path=manifest_path,
+        split="train",
+        output_dir=tmp_path / "grpo",
+        reward_profile="closure_control_smooth",
+        limit=1,
+    )
+
+    assert result["reward_profile"] == "closure_control_smooth"
+    assert result["sample_rewards"] == [1.0 + 0.25 * (1 - 1 / 4096), -0.3]
+
+
+def test_handoff1_pool_builder_writes_rank_weighted_manifest(tmp_path: Path) -> None:
+    manifest = {
+        "target": 24,
+        "splits": {
+            "train": [
+                {"id": "easy", "numbers": [1, 1, 1, 1], "target": 24},
+                {"id": "hard", "numbers": [2, 2, 2, 2], "target": 24},
+            ]
+        },
+    }
+    tot_manifest = {
+        "splits": {
+            "tot_all_1362": [
+                {"id": "tot-easy", "numbers": [1, 1, 1, 1], "tot_index": 0},
+                {"id": "tot-hard", "numbers": [2, 2, 2, 2], "tot_index": 900},
+            ]
+        }
+    }
+    manifest_path = tmp_path / "manifest.json"
+    tot_path = tmp_path / "tot.json"
+    output_path = tmp_path / "pool.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    tot_path.write_text(json.dumps(tot_manifest), encoding="utf-8")
+
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/build_handoff1_grpo_pool.py",
+            "--manifest",
+            str(manifest_path),
+            "--tot-manifest",
+            str(tot_path),
+            "--output",
+            str(output_path),
+        ],
+        check=True,
+    )
+
+    pool = json.loads(output_path.read_text(encoding="utf-8"))
+    assert pool["audit"]["passed"] is True
+    assert pool["selected_prompt_ids"] == ["easy", "hard", "hard"]
+    assert pool["metadata"]["bucket_counts"] == {
+        "easy_1_300": 1,
+        "hard_901_1100": 1,
+    }
 
 
 def _mixed_details(count: int) -> list[dict[str, object]]:

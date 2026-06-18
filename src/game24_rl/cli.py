@@ -280,7 +280,12 @@ def train_grpo_main() -> None:
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
     parser.add_argument(
         "--reward-profile",
-        choices=["strict", "close_bonus", "closure_strict"],
+        choices=[
+            "strict",
+            "close_bonus",
+            "closure_strict",
+            "closure_control_smooth",
+        ],
         default="strict",
     )
     parser.add_argument("--peft-mode", choices=["none", "lora"], default="lora")
@@ -305,6 +310,7 @@ def train_grpo_main() -> None:
             split=args.split,
             output_dir=args.output_dir,
             prompt_style=args.prompt_style,
+            reward_profile=args.reward_profile,
             limit=args.limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))

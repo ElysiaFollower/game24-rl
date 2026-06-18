@@ -1,5 +1,9 @@
 # GRPO Pilot 设计
 
+> 2026-06-19 更新：本文记录早期 conservative pilot 设计。当前 handoff1 后续 GRPO
+> 训练的冻结执行口径以
+> `docs/experiments/handoff1_grpo_final_plan_20260619.md` 为准。
+
 ## 摘要
 
 下一阶段应该从 strong SFT checkpoint 启动一轮 conservative RLVR + GRPO
