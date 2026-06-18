@@ -226,7 +226,7 @@ def build_prompt_dataset(
             "id": record["id"],
             "numbers": record["numbers"],
             "target": record.get("target", manifest.get("target", 24)),
-            "prompt": format_prompt(
+            "prompt": _format_prompt_compat(
                 record["numbers"],
                 target=record.get("target", manifest.get("target", 24)),
                 prompt_style=prompt_style,
@@ -377,3 +377,19 @@ def _safe_rate(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 0.0
     return numerator / denominator
+
+
+def _format_prompt_compat(
+    numbers: list[int],
+    *,
+    target: int,
+    prompt_style: str,
+) -> str:
+    """Formats prompts across old and target-aware data_gen implementations."""
+
+    try:
+        return format_prompt(numbers, target=target, prompt_style=prompt_style)
+    except TypeError as exc:
+        if "target" not in str(exc):
+            raise
+        return format_prompt(numbers, prompt_style=prompt_style)
