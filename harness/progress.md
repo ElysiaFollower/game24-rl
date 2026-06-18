@@ -15,9 +15,11 @@
   `lora_r16_beta001_filtered_g8_lr5e7_5` 的 `116/136 = 85.29%`，
   retention `109/110`，answer-contract failures `20`，wrong-answer `0`。
   second-stage hard-pool continuation 从该 adapter 继续训后退到
-  `112/136`，说明不能靠盲目加大 RL 强度突破；统一 direct greedy
-  `max_new_tokens=4096` 已达到 validation `126/136 = 92.65%` 和 test
-  `129/137 = 94.16%`，可作为“单模型直接推理”的 90%+ 主结果。更高的
+  `112/136`，说明不能靠盲目加大 RL 强度突破；同口径补跑 strong SFT
+  final 的 direct greedy `max_new_tokens=4096` 后，SFT 本身已达到
+  validation `123/136 = 90.44%` 和 test `128/137 = 93.43%`。当前最佳
+  GRPO adapter 在同预算下达到 validation `126/136 = 92.65%` 和 test
+  `129/137 = 94.16%`，净增分别是 `+3/136` 和 `+1/137`。更高的
   inference-time strict verifier rerank 结果是 validation `133/136 = 97.79%`
   和 test `136/137 = 99.27%`，报告时必须分开。
 
@@ -29,6 +31,28 @@
 - `passing`：验证通过且 evidence 已记录。
 
 ## 近期证据
+
+### 2026-06-18 - Official ToT overnight plan fixed
+
+- 执行口径文档：`docs/experiments/official_tot_overnight_plan_20260618.md`。
+- 已确认 `nlile/24-game` 当前下载版本为 `1362` 条且全部可解；本项目
+  solver 审计为 `1362/1362` 可解，字段不一致数为 `0`。
+- 已确认 `nlile/24-game` 与 `test-time-compute/game-of-24` 在 puzzle 集合上
+  完全相同：二者各 `1362` 个 unique puzzles，overlap `1362`，
+  `nlile-only=0`，`ToT-only=0`，同下标相同题目仅 `3/1362`，说明主要是排序和
+  元数据不同。
+- 今夜实验矩阵固定为：base eval；`SFT-full-data-5000` 使用完整
+  `nlile/24-game` 训练，并复用此前达到强 SFT baseline 的同类 SFT-5000
+  训练配置；`SFT-remove-900to1000-5000` 使用 ToT 排除 indices `900-999`
+  后的 `1262` 条训练；随后分别从两个 SFT checkpoint 做 GRPO，GRPO 路线根据
+  此前 repo-local split 实验分析结果设计，旧结果只作为设计依据。
+- 评测关键约束：每个模型只在 `test-time-compute/game-of-24` 全量 `1362`
+  条上跑一次 greedy `max_new_tokens=4096` eval；`all_1362`、`easy1262`
+  和 `hard100` 指标必须从同一份 per-sample 结果中离线切分，不能重复跑分组
+  GPU eval。
+- failure 分类只是非阻塞后处理；主链路优先保存 raw outputs、per-sample
+  verifier results、run config 和基础分组 solve rate，不能因为 failure
+  分类遇到未覆盖类型而中断训练/评估。
 
 ### 2026-06-16 - Conservative GRPO pilot design active
 
@@ -378,11 +402,21 @@
   and no verifier-rerank, `max_new_tokens=2048` reached validation
   `123/136 = 90.44%` and test `122/137 = 89.05%`; unified
   `max_new_tokens=4096` reached validation `126/136 = 92.65%` and test
-  `129/137 = 94.16%`. This is now the strongest direct inference result.
+  `129/137 = 94.16%`. The matched strong SFT final 4096 baseline reached
+  validation `123/136 = 90.44%` and test `128/137 = 93.43%`, so the direct
+  90%+ result is primarily a long-token-budget effect, with GRPO adding a
+  smaller same-budget gain of `+3/136` validation and `+1/137` test.
   Artifacts:
   `/root/autodl-tmp/projects/grpo-direct-long/best116_validation_greedy_4096/validation-eval-report.json`
   and
   `/root/autodl-tmp/projects/grpo-direct-long/best116_test_greedy_4096/test-eval-report.json`.
+  SFT baseline artifacts:
+  `/root/autodl-tmp/projects/sft-direct-long/sft_final_validation_greedy_4096/validation-eval-report.json`
+  and
+  `/root/autodl-tmp/projects/sft-direct-long/sft_final_test_greedy_4096/test-eval-report.json`.
+  Remaining answer-contract failures under 4096 still have zero `<answer>` and
+  zero `</answer>` tags; outputs are still inside rollback/search, not malformed
+  answer blocks.
   Chinese record:
   `docs/experiments/direct_long_token_greedy_20260617.md`.
 - Eval observability fix:

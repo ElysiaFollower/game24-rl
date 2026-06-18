@@ -10,10 +10,13 @@ from game24_rl.verifier import VerificationResult, verify_answer
 
 GRPO_REWARD_VERSION = "strict-correctness-closure-v1"
 GRPO_CLOSE_BONUS_REWARD_VERSION = "strict-correctness-close-bonus-v1"
+GRPO_CLOSURE_STRICT_REWARD_VERSION = "strict-correctness-closure-strict-v1"
 
 CORRECT_REWARD = 1.0
 MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.2
 PARSEABLE_WRONG_ANSWER_REWARD = -0.1
+STRICT_MISSING_OR_INCOMPLETE_ANSWER_REWARD = -0.5
+STRICT_PARSEABLE_WRONG_ANSWER_REWARD = -0.2
 EARLY_CLOSE_BONUS = 0.1
 ON_TIME_CLOSE_BONUS = 0.05
 
@@ -86,6 +89,8 @@ def score_completion(
     reward_version = GRPO_REWARD_VERSION
     if reward_profile == "close_bonus":
         reward_version = GRPO_CLOSE_BONUS_REWARD_VERSION
+    if reward_profile == "closure_strict":
+        reward_version = GRPO_CLOSURE_STRICT_REWARD_VERSION
     return GrpoRewardScore(
         reward=reward,
         reward_reason=reward_reason,
@@ -169,13 +174,25 @@ def _reward_from_verification(
     if verification.valid:
         if reward_profile == "close_bonus":
             return _reward_valid_with_close_bonus(closure)
+        if reward_profile == "closure_strict":
+            return _reward_valid_with_closure_strict(closure)
         if reward_profile != "strict":
             raise ValueError(f"unknown reward profile: {reward_profile}")
         return CORRECT_REWARD, "strict_correct"
     if not closure.has_complete_answer or verification.reason.startswith(
         "answer_contract"
     ):
+        if reward_profile == "closure_strict":
+            return (
+                STRICT_MISSING_OR_INCOMPLETE_ANSWER_REWARD,
+                "closure_strict_missing_or_incomplete_answer",
+            )
         return MISSING_OR_INCOMPLETE_ANSWER_REWARD, "missing_or_incomplete_answer"
+    if reward_profile == "closure_strict":
+        return (
+            STRICT_PARSEABLE_WRONG_ANSWER_REWARD,
+            "closure_strict_parseable_wrong_answer",
+        )
     return PARSEABLE_WRONG_ANSWER_REWARD, "parseable_wrong_answer"
 
 
@@ -189,6 +206,21 @@ def _reward_valid_with_close_bonus(
     if closure.answer_close_token_index <= 512:
         return CORRECT_REWARD + ON_TIME_CLOSE_BONUS, "strict_correct_close_le_512"
     return CORRECT_REWARD, "strict_correct_late_close"
+
+
+def _reward_valid_with_closure_strict(
+    closure: AnswerClosureMetrics,
+) -> tuple[float, str]:
+    if closure.answer_close_token_index is None:
+        return CORRECT_REWARD, "closure_strict_correct"
+    if closure.answer_close_token_index <= 256:
+        return CORRECT_REWARD + EARLY_CLOSE_BONUS, "closure_strict_correct_close_le_256"
+    if closure.answer_close_token_index <= 512:
+        return (
+            CORRECT_REWARD + ON_TIME_CLOSE_BONUS,
+            "closure_strict_correct_close_le_512",
+        )
+    return CORRECT_REWARD, "closure_strict_correct_late_close"
 
 
 def _first_token_containing(tokens: Sequence[str], needle: str) -> int | None:

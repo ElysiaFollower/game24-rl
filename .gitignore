@@ -19,6 +19,7 @@ wandb/
 *.pth
 *.bin
 *.safetensors
+*.docx
 
 # Local environment files.
 .env

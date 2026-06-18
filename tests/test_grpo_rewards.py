@@ -2,6 +2,7 @@
 
 from game24_rl.rewards import (
     GRPO_CLOSE_BONUS_REWARD_VERSION,
+    GRPO_CLOSURE_STRICT_REWARD_VERSION,
     GRPO_REWARD_VERSION,
     answer_closure_metrics,
     reward_completions,
@@ -60,6 +61,35 @@ def test_close_bonus_profile_only_rewards_valid_early_closure() -> None:
     assert early.reward_version == GRPO_CLOSE_BONUS_REWARD_VERSION
     assert wrong.reward == -0.1
     assert wrong.reward_reason == "parseable_wrong_answer"
+
+
+def test_closure_strict_profile_penalizes_unclosed_search_more() -> None:
+    correct = score_completion(
+        "<answer>((8 - 2) * (7 - 3))</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_strict",
+    )
+    missing = score_completion(
+        "<think>still searching",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_strict",
+    )
+    wrong = score_completion(
+        "<answer>8 + 2 + 7 + 3</answer>",
+        numbers=[8, 2, 7, 3],
+        target=24,
+        reward_profile="closure_strict",
+    )
+
+    assert correct.reward == 1.1
+    assert correct.reward_reason == "closure_strict_correct_close_le_256"
+    assert correct.reward_version == GRPO_CLOSURE_STRICT_REWARD_VERSION
+    assert missing.reward == -0.5
+    assert missing.reward_reason == "closure_strict_missing_or_incomplete_answer"
+    assert wrong.reward == -0.2
+    assert wrong.reward_reason == "closure_strict_parseable_wrong_answer"
 
 
 def test_reward_completions_accepts_trl_style_extra_columns() -> None:

@@ -280,7 +280,7 @@ def train_grpo_main() -> None:
     parser.add_argument("--scale-rewards", choices=["none", "group"], default="none")
     parser.add_argument(
         "--reward-profile",
-        choices=["strict", "close_bonus"],
+        choices=["strict", "close_bonus", "closure_strict"],
         default="strict",
     )
     parser.add_argument("--peft-mode", choices=["none", "lora"], default="lora")

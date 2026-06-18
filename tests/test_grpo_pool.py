@@ -182,19 +182,20 @@ def test_initial_adapter_requires_lora_peft_mode() -> None:
 
 
 def test_build_reward_func_applies_fixed_profile() -> None:
-    reward_func = _build_reward_func("close_bonus")
+    reward_func = _build_reward_func("closure_strict")
 
     rewards = reward_func(
         completions=[
             "<answer>((8 - 2) * (7 - 3))</answer>",
+            "<think>still searching",
             "<answer>8 + 2 + 7 + 3</answer>",
         ],
-        numbers=[[8, 2, 7, 3], [8, 2, 7, 3]],
-        target=[24, 24],
+        numbers=[[8, 2, 7, 3], [8, 2, 7, 3], [8, 2, 7, 3]],
+        target=[24, 24, 24],
     )
 
-    assert rewards == [1.1, -0.1]
-    assert reward_func.__name__ == "reward_completions_close_bonus"
+    assert rewards == [1.1, -0.5, -0.2]
+    assert reward_func.__name__ == "reward_completions_closure_strict"
 
 
 def test_select_prompt_ids_from_details_filters_high_signal_groups() -> None:
