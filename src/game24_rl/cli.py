@@ -447,18 +447,30 @@ def _run_grpo_compat_probe(args: argparse.Namespace) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if metadata["passed"]:
         try:
-            resolved_config = GRPOConfig(
+            config_kwargs, skipped_config_kwargs = _build_grpo_config_kwargs(
+                supported_fields=supported_fields,
                 output_dir=str(output_dir),
                 beta=args.beta,
                 scale_rewards=args.scale_rewards,
                 mask_truncated_completions=args.mask_truncated_completions,
                 remove_unused_columns=args.remove_unused_columns,
-                loss_type="dr_grpo",
+                max_completion_length=args.max_completion_length,
+                num_generations=args.num_generations,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                learning_rate=args.learning_rate,
+                max_steps=args.max_steps,
+                save_steps=args.save_steps,
+                logging_steps=args.logging_steps,
             )
+            resolved_config = GRPOConfig(**config_kwargs)
         except Exception as exc:  # pragma: no cover - depends on remote TRL version.
             metadata["passed"] = False
             metadata["error"] = f"GRPOConfig rejected probe settings: {exc}"
         else:
+            metadata["grpo_config_kwargs"] = config_kwargs
+            metadata["skipped_grpo_config_kwargs"] = skipped_config_kwargs
             metadata["resolved_config"] = {
                 "beta": getattr(resolved_config, "beta", None),
                 "scale_rewards": getattr(resolved_config, "scale_rewards", None),

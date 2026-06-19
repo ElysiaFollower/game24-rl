@@ -44,7 +44,7 @@ while true; do
 
   if [[ -s "$TRAIN_1024_REPORT" && -s "$TRAIN_4096_REPORT" && -s "$RANK_AUDIT" ]]; then
     log "train eval artifacts complete; starting GRPO"
-    nohup bash scripts/experiments/run_handoff1_grpo_final.sh \
+    nohup bash -lc "source /root/miniconda3/etc/profile.d/conda.sh && conda activate base && bash scripts/experiments/run_handoff1_grpo_final.sh" \
       > "$RUN_ROOT/logs/run_handoff1_grpo_final.nohup.log" 2>&1 &
     echo "$!" > "$RUN_ROOT/grpo.pid"
     log "started GRPO pid=$(cat "$RUN_ROOT/grpo.pid")"
