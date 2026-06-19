@@ -253,7 +253,7 @@ def train_grpo_main() -> None:
         help="Directory for GRPO artifacts.",
     )
     parser.add_argument("--prompt-style", default="qwen_chat")
-    parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--limit", type=int)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--compat-probe", action="store_true")
     parser.add_argument("--train", action="store_true")
@@ -311,7 +311,7 @@ def train_grpo_main() -> None:
             output_dir=args.output_dir,
             prompt_style=args.prompt_style,
             reward_profile=args.reward_profile,
-            limit=args.limit,
+            limit=args.limit or 8,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return
