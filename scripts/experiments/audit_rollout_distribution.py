@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from game24_rl.data_gen import (  # noqa: E402
     PROMPT_STYLE_QWEN_CHAT,
     PROMPT_STYLE_QWEN_CHAT_SEARCH,
+    PROMPT_STYLE_QWEN_CHAT_TARGET,
     format_prompt,
 )
 from game24_rl.datasets import read_manifest  # noqa: E402
@@ -58,7 +59,11 @@ def main() -> None:
     parser.add_argument("--training-mode", choices=["full", "lora"], default="full")
     parser.add_argument(
         "--prompt-style",
-        choices=[PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH],
+        choices=[
+            PROMPT_STYLE_QWEN_CHAT,
+            PROMPT_STYLE_QWEN_CHAT_SEARCH,
+            PROMPT_STYLE_QWEN_CHAT_TARGET,
+        ],
         default=PROMPT_STYLE_QWEN_CHAT,
     )
     parser.add_argument("--output-dir", required=True)
@@ -170,7 +175,11 @@ def sample_rollouts(
 
     expanded = []
     for record in prompts:
-        prompt = format_prompt(record["numbers"], prompt_style=args.prompt_style)
+        prompt = format_prompt(
+            record["numbers"],
+            target=record.get("target", 24),
+            prompt_style=args.prompt_style,
+        )
         for sample_index in range(args.num_generations):
             expanded.append((record, sample_index, prompt))
 
