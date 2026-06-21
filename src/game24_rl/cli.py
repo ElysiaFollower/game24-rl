@@ -285,6 +285,8 @@ def train_grpo_main() -> None:
             "close_bonus",
             "closure_strict",
             "closure_control_smooth",
+            "target_alignment",
+            "target_distance",
         ],
         default="strict",
     )

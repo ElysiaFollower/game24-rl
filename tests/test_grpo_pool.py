@@ -98,6 +98,42 @@ def test_audit_rollout_groups_rejects_weak_pool_signal() -> None:
     assert "all_wrong_rate" in audit.failures
 
 
+def test_audit_rollout_groups_selects_all_wrong_reward_variance() -> None:
+    details = [
+        {
+            "id": "distance-signal",
+            "reward": -0.05,
+            "reason": "wrong_value",
+            "numbers": [70, 70, 91],
+            "target": 90,
+        },
+        {
+            "id": "distance-signal",
+            "reward": -0.8,
+            "reason": "wrong_value",
+            "numbers": [70, 70, 91],
+            "target": 90,
+        },
+    ]
+
+    audit = audit_rollout_groups(
+        details,
+        gate=GrpoPoolGateConfig(
+            min_pool_size=1,
+            min_mixed_group_rate=0.25,
+            max_zero_std_group_rate=0.75,
+            min_correct_truncation_mixed=0,
+            max_all_wrong_rate=1.0,
+        ),
+    )
+
+    assert audit.passed is True
+    assert audit.mixed_groups == 1
+    assert audit.all_wrong_groups == 1
+    assert audit.zero_std_groups == 0
+    assert audit.selected_prompt_ids == ["distance-signal"]
+
+
 def test_build_grpo_probe_metadata_records_fail_fast_contract() -> None:
     metadata = build_grpo_probe_metadata(
         GrpoCompatibilityConfig(
@@ -198,6 +234,23 @@ def test_build_reward_func_applies_fixed_profile() -> None:
 
     assert rewards == [1.0 + 0.25 * (1 - 1 / 4096), -0.3, -0.35]
     assert reward_func.__name__ == "reward_completions_closure_control_smooth"
+
+
+def test_build_reward_func_supports_target_alignment_profile() -> None:
+    reward_func = _build_reward_func("target_alignment")
+
+    rewards = reward_func(
+        completions=[
+            "<answer>(91 - (70 / 70))</answer>",
+            "<answer>(70 / 70 + 91)</answer>",
+            "<think>still searching",
+        ],
+        numbers=[[70, 70, 91], [70, 70, 91], [70, 70, 91]],
+        target=[90, 90, 90],
+    )
+
+    assert rewards == [1.0, -1.0, -0.5]
+    assert reward_func.__name__ == "reward_completions_target_alignment"
 
 
 def test_select_prompt_ids_from_details_filters_high_signal_groups() -> None:

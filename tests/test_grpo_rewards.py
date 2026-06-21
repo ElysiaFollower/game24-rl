@@ -5,6 +5,8 @@ from game24_rl.rewards import (
     GRPO_CLOSURE_CONTROL_SMOOTH_REWARD_VERSION,
     GRPO_CLOSURE_STRICT_REWARD_VERSION,
     GRPO_REWARD_VERSION,
+    GRPO_TARGET_ALIGNMENT_REWARD_VERSION,
+    GRPO_TARGET_DISTANCE_REWARD_VERSION,
     answer_closure_metrics,
     reward_completions,
     score_completion,
@@ -93,7 +95,7 @@ def test_closure_strict_profile_penalizes_unclosed_search_more() -> None:
     assert wrong.reward_reason == "closure_strict_parseable_wrong_answer"
 
 
-def test_closure_control_smooth_rewards_correct_answer_with_continuous_close_bonus() -> None:
+def test_closure_control_smooth_rewards_correct_answer_with_bonus() -> None:
     early = score_completion(
         "<answer>((8-2)*(7-3))</answer>",
         numbers=[8, 2, 7, 3],
@@ -159,6 +161,63 @@ def test_closure_control_smooth_uses_fixed_error_rewards() -> None:
     assert wrong_numbers.reward_reason == "closure_control_smooth_wrong_numbers"
     assert wrong_value.reward == -0.35
     assert wrong_value.reward_reason == "closure_control_smooth_wrong_value"
+
+
+def test_target_alignment_profile_strongly_penalizes_wrong_target() -> None:
+    correct = score_completion(
+        "<answer>(91 - (70 / 70))</answer>",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_alignment",
+    )
+    wrong_target = score_completion(
+        "<answer>(70 / 70 + 91)</answer>",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_alignment",
+    )
+    missing = score_completion(
+        "<think>still searching",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_alignment",
+    )
+
+    assert correct.reward == 1.0
+    assert correct.reward_reason == "target_alignment_correct"
+    assert correct.reward_version == GRPO_TARGET_ALIGNMENT_REWARD_VERSION
+    assert wrong_target.reward == -1.0
+    assert wrong_target.reward_reason == "target_alignment_wrong_value"
+    assert missing.reward == -0.5
+    assert missing.reward_reason == "target_alignment_missing_or_incomplete_answer"
+
+
+def test_target_distance_profile_rewards_closeness_to_target() -> None:
+    near = score_completion(
+        "<answer>91 + (70 / 70)</answer>",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_distance",
+    )
+    far = score_completion(
+        "<answer>((70 + 70) - 91)</answer>",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_distance",
+    )
+    correct = score_completion(
+        "<answer>(91 - (70 / 70))</answer>",
+        numbers=[70, 70, 91],
+        target=90,
+        reward_profile="target_distance",
+    )
+
+    assert correct.reward == 1.0
+    assert correct.reward_version == GRPO_TARGET_DISTANCE_REWARD_VERSION
+    assert near.reward == -(2 / 90)
+    assert near.reward_reason == "target_distance_wrong_value"
+    assert far.reward == -(41 / 90)
+    assert far.reward < near.reward
 
 
 def test_reward_completions_accepts_trl_style_extra_columns() -> None:

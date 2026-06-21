@@ -91,8 +91,8 @@ def audit_rollout_groups(
         rewards = [float(item.get("reward", 0.0)) for item in group]
         positive = sum(reward > 0 for reward in rewards)
         has_correct = positive > 0
-        has_wrong = positive < len(rewards)
-        if has_correct and has_wrong:
+        has_reward_variance = min(rewards) != max(rewards)
+        if has_reward_variance:
             mixed += 1
             selected_prompt_ids.append(prompt_id)
         if positive == len(rewards):
@@ -103,7 +103,7 @@ def audit_rollout_groups(
         if has_correct and reasons[TRUNCATION_REASON] > 0:
             correct_truncation_mixed += 1
 
-    zero_std = all_correct + all_wrong
+    zero_std = total_prompts - mixed
     mixed_rate = _safe_rate(mixed, total_prompts)
     zero_std_rate = _safe_rate(zero_std, total_prompts)
     all_wrong_rate = _safe_rate(all_wrong, total_prompts)

@@ -69,6 +69,22 @@ def test_qwen_chat_target_prompt_includes_target() -> None:
     assert prompt.endswith("<|im_start|>assistant\n")
 
 
+def test_qwen_chat_minimal_target_prompt_only_changes_target() -> None:
+    prompt = format_prompt(
+        (74, 5, 20, 88),
+        target=50,
+        prompt_style="qwen_chat_minimal_target",
+    )
+
+    assert prompt.startswith("<|im_start|>system\n")
+    assert "Play the 50-point game." in prompt
+    assert "Given four numbers, reach 50" in prompt
+    assert "<|im_start|>user\n74 5 20 88\n<|im_end|>\n" in prompt
+    assert "Numbers:" not in prompt
+    assert "Target:" not in prompt
+    assert prompt.endswith("<|im_start|>assistant\n")
+
+
 def test_checked_success_trace_keeps_verifier_contract() -> None:
     records = build_sft_records(
         [(8, 2, 7, 3)],

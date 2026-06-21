@@ -21,6 +21,19 @@ def test_accepts_valid_answer_contract() -> None:
     assert result.numbers == (2, 3, 7, 8)
 
 
+def test_accepts_three_number_target_puzzle() -> None:
+    result = verify_answer(
+        "<answer>((7 - 3) * 8)</answer>",
+        puzzle=(3, 7, 8),
+        target=32,
+    )
+
+    assert result.valid
+    assert result.reason == "ok"
+    assert result.value == 32
+    assert result.numbers == (3, 7, 8)
+
+
 @pytest.mark.parametrize(
     ("output", "reason_prefix"),
     [

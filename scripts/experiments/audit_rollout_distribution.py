@@ -15,12 +15,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from game24_rl.data_gen import (  # noqa: E402
     PROMPT_STYLE_QWEN_CHAT,
+    PROMPT_STYLE_QWEN_CHAT_MINIMAL_TARGET,
     PROMPT_STYLE_QWEN_CHAT_SEARCH,
     PROMPT_STYLE_QWEN_CHAT_TARGET,
     format_prompt,
 )
 from game24_rl.datasets import read_manifest  # noqa: E402
 from game24_rl.evaluate import DecodingConfig, write_jsonl  # noqa: E402
+from game24_rl.rewards import score_completion  # noqa: E402
 from game24_rl.verifier import verify_answer  # noqa: E402
 
 
@@ -36,10 +38,13 @@ class RolloutSummary:
     valid_expr: int
     pass_at_1_greedy_proxy: int
     pass_at_k: int
+    strict_mixed_groups: int
     mixed_reward_groups: int
     all_correct_groups: int
     all_wrong_groups: int
     zero_std_groups: int
+    zero_std_reward_groups: int
+    reward_nonzero_pass_at_k: int
     truncation_like_failures: int
     completion_len_mean: float
     completion_len_p50: int
@@ -63,6 +68,7 @@ def main() -> None:
             PROMPT_STYLE_QWEN_CHAT,
             PROMPT_STYLE_QWEN_CHAT_SEARCH,
             PROMPT_STYLE_QWEN_CHAT_TARGET,
+            PROMPT_STYLE_QWEN_CHAT_MINIMAL_TARGET,
         ],
         default=PROMPT_STYLE_QWEN_CHAT,
     )
@@ -74,6 +80,13 @@ def main() -> None:
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--seed", type=int, default=20260616)
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--reward-profile",
+        help=(
+            "Optional GRPO reward profile for rollout details. If omitted, "
+            "details keep the historical binary valid/invalid reward."
+        ),
+    )
     parser.add_argument(
         "--ids-file",
         help="Optional newline-delimited puzzle ids to audit.",
@@ -106,6 +119,7 @@ def main() -> None:
                 top_p=args.top_p,
             )
         ),
+        "reward_profile": args.reward_profile or "binary_validity",
         "raw_outputs_path": str(raw_path),
         "details_path": str(detail_path),
         "reason_counts": dict(Counter(item["reason"] for item in details)),
@@ -183,7 +197,9 @@ def sample_rollouts(
         for sample_index in range(args.num_generations):
             expanded.append((record, sample_index, prompt))
 
-    for start in range(0, len(expanded), args.batch_size):
+    total_expanded = len(expanded)
+    total_batches = (total_expanded + args.batch_size - 1) // args.batch_size
+    for batch_index, start in enumerate(range(0, total_expanded, args.batch_size), 1):
         batch = expanded[start : start + args.batch_size]
         prompt_texts = [item[2] for item in batch]
         inputs = tokenizer(prompt_texts, return_tensors="pt", padding=True).to(
@@ -208,6 +224,19 @@ def sample_rollouts(
                 puzzle=record["numbers"],
                 target=record.get("target", 24),
             )
+            reward = int(result.valid)
+            reward_reason = result.reason
+            reward_version = "binary-validity-v1"
+            if args.reward_profile:
+                reward_score = score_completion(
+                    output,
+                    numbers=record["numbers"],
+                    target=record.get("target", 24),
+                    reward_profile=args.reward_profile,
+                )
+                reward = reward_score.reward
+                reward_reason = reward_score.reward_reason
+                reward_version = reward_score.reward_version
             raw_outputs.append(
                 {
                     "schema_version": "game24-sampled-rollouts-v1",
@@ -226,7 +255,9 @@ def sample_rollouts(
                     "numbers": record["numbers"],
                     "target": record["target"],
                     "valid": result.valid,
-                    "reward": int(result.valid),
+                    "reward": reward,
+                    "reward_reason": reward_reason,
+                    "reward_version": reward_version,
                     "reason": result.reason,
                     "expression": result.expression,
                     "value": str(result.value) if result.value is not None else None,
@@ -236,11 +267,21 @@ def sample_rollouts(
                     "has_answer_close": "</answer>" in output,
                 }
             )
+        if batch_index == 1 or batch_index % 50 == 0 or batch_index == total_batches:
+            generated_count = min(start + len(batch), total_expanded)
+            print(
+                f"generated {generated_count}/{total_expanded} sampled outputs "
+                f"({batch_index}/{total_batches} batches)",
+                flush=True,
+            )
 
-    by_id: dict[str, list[int]] = {}
+    by_id_rewards: dict[str, list[float]] = {}
+    by_id_valids: dict[str, list[int]] = {}
     for detail in details:
-        by_id.setdefault(str(detail["id"]), []).append(int(detail["reward"]))
-    grouped_rewards = list(by_id.values())
+        by_id_rewards.setdefault(str(detail["id"]), []).append(float(detail["reward"]))
+        by_id_valids.setdefault(str(detail["id"]), []).append(int(detail["valid"]))
+    grouped_rewards = list(by_id_rewards.values())
+    grouped_valids = list(by_id_valids.values())
 
     reason_counts = Counter(item["reason"] for item in details)
     solved = sum(int(item["valid"]) for item in details)
@@ -250,12 +291,15 @@ def sample_rollouts(
     valid_expr = sum(
         int(item["valid"] or item["reason"] == "wrong_value") for item in details
     )
-    pass_at_1 = sum(group[0] for group in grouped_rewards)
-    pass_at_k = sum(int(any(group)) for group in grouped_rewards)
-    mixed = sum(int(0 < sum(group) < len(group)) for group in grouped_rewards)
-    all_correct = sum(int(sum(group) == len(group)) for group in grouped_rewards)
-    all_wrong = sum(int(sum(group) == 0) for group in grouped_rewards)
+    pass_at_1 = sum(group[0] for group in grouped_valids)
+    pass_at_k = sum(int(any(group)) for group in grouped_valids)
+    strict_mixed = sum(int(0 < sum(group) < len(group)) for group in grouped_valids)
+    all_correct = sum(int(sum(group) == len(group)) for group in grouped_valids)
+    all_wrong = sum(int(sum(group) == 0) for group in grouped_valids)
     zero_std = all_correct + all_wrong
+    mixed_reward = sum(int(len(set(group)) > 1) for group in grouped_rewards)
+    zero_std_reward = sum(int(len(set(group)) == 1) for group in grouped_rewards)
+    reward_nonzero_pass_at_k = sum(int(any(group)) for group in grouped_rewards)
     sorted_lengths = sorted(lengths)
     summary = RolloutSummary(
         total_prompts=len(prompts),
@@ -266,10 +310,13 @@ def sample_rollouts(
         valid_expr=valid_expr,
         pass_at_1_greedy_proxy=pass_at_1,
         pass_at_k=pass_at_k,
-        mixed_reward_groups=mixed,
+        strict_mixed_groups=strict_mixed,
+        mixed_reward_groups=mixed_reward,
         all_correct_groups=all_correct,
         all_wrong_groups=all_wrong,
         zero_std_groups=zero_std,
+        zero_std_reward_groups=zero_std_reward,
+        reward_nonzero_pass_at_k=reward_nonzero_pass_at_k,
         truncation_like_failures=reason_counts[
             "answer_contract:expected exactly one <answer>...</answer> block"
         ],
