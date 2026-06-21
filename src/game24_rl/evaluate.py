@@ -328,7 +328,11 @@ def build_solver_raw_outputs(
                 "id": record["id"],
                 "numbers": record["numbers"],
                 "target": record["target"],
-                "prompt": format_prompt(record["numbers"], prompt_style=prompt_style),
+                "prompt": format_prompt(
+                    record["numbers"],
+                    target=record.get("target", 24),
+                    prompt_style=prompt_style,
+                ),
                 "output": output,
                 "source": "exact_solver_dry_run",
             }
@@ -433,7 +437,11 @@ def generate_checkpoint_outputs(
     for start in range(0, len(records), batch_size):
         batch = records[start : start + batch_size]
         prompts = [
-            format_prompt(record["numbers"], prompt_style=prompt_style)
+            format_prompt(
+                record["numbers"],
+                target=record.get("target", 24),
+                prompt_style=prompt_style,
+            )
             for record in batch
         ]
         inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)

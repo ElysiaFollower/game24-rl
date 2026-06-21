@@ -29,6 +29,59 @@
   `+3/136` 和 `+1/137`。更高的 inference-time strict verifier rerank 是另一个
   口径：validation `133/136 = 97.79%`，test `136/137 = 99.27%`。
 
+## 最新补充：handoff3 Countdown transfer
+
+- handoff3 目标：基于 handoff2 GRPO checkpoint-500，评估
+  `Jiayi-Pan/Countdown-Tasks-3to4` 的 3-4 数字凑任意 target 加分项。
+- 新增代码：`src/game24_rl/countdown_solver.py`、`scripts/build_countdown_sft_data.py`、
+  `scripts/build_countdown_stratified_eval_manifest.py`、
+  `scripts/experiments/eval_countdown_stratified.py`、
+  `scripts/experiments/run_countdown_sft_adaptation.py`，并扩展 verifier 支持
+  3/4 数字任意 target。
+- AutoDL 数据：`data/raw/hf/Jiayi-Pan__Countdown-Tasks-3to4/default__train.jsonl`
+  共 `490364` 行。
+- 100 题 stratified eval manifest：
+  `outputs/experiments/handoff3_countdown_eval/countdown-stratified-eval-manifest.json`，
+  `1/2/3/4` solution buckets 各 25 题。
+- handoff2 zero-shot：`0/100`，`format_ok=9/100`，`valid_expr=5/100`。
+- 后续复盘确认上述 handoff2 zero-shot 使用的 `qwen_chat_target` 不是最小迁移
+  prompt，因为它把 user 输入改成了 `Numbers:` / `Target:`。当前正确最小迁移
+  prompt 是 `qwen_chat_minimal_target`：system 中只把 `24` 替换成目标数字，
+  user 段仍只放裸数字。
+- handoff2 minimal-transfer greedy16：`0/16`，`format_ok=1/16`，`valid_expr=0/16`，
+  15 条是 answer-contract/no-answer，1 条 wrong_numbers。Artifact：
+  `outputs/experiments/handoff3_countdown_minimal/eval_handoff2_minimal_greedy16`。
+- handoff2 minimal-transfer sampled audit：原计划 `32 x G8 x 4096` 运行 60 分钟
+  仍无 summary，停止；改跑 `8 x G4 x 4096`，结果 `0/32`，`pass@4=0/8`，
+  `format_ok=3/32`，`valid_expr=0/32`，completion len mean/p50/p95 全是 `4096`。
+  失败为 `29` answer-contract/no-answer、`3` wrong_numbers。Artifact：
+  `outputs/experiments/handoff3_countdown_minimal/rollout_handoff2_minimal_8_g4`。
+  结论：最小迁移能恢复 rollback/search 风格，但没有直接 GRPO 所需的正样本信号。
+- Countdown SFT-400-200：partial eval 前 8 条 `1/8`，仍有长输出/格式问题。
+- Countdown SFT-2000-600 当前最佳 adapter：
+  `outputs/experiments/handoff3_countdown_adapt/sft_train_handoff2_continue_2000_600steps/final`。
+  训练 `train_loss=0.09375`。
+- SFT-2000-600 smoke eval：first-16 `1/16`，balanced-16 `1/16`；
+  两者 `format_ok=16/16`、`valid_expr=16/16`，主失败是 `wrong_value`。
+- SFT-2000-600 sampled audit：16 prompts x 8 samples 只有 `1/128` 正确，
+  `pass@8=1/16`，15 个 all-wrong group。因此暂不建议直接 GRPO 长训；
+  下一步应先做 Countdown curriculum SFT，再复查 sampled success。
+- 最新有效 handoff3 路线已切到 balanced low-solution SFT，再接 target-distance
+  GRPO：训练 256 个 train prompts，`G=8`，`max_steps=1200`，
+  `lr=1e-6`，`beta=0.001`，`scale_rewards=none`，`dr_grpo`。
+  最终 adapter：
+  `outputs/experiments/handoff3_countdown_balanced_grpo_probe/grpo_targetdistance_from_balanced_sft_train256_g8_lr1e6_beta001_1200/final`。
+  full100 held-out greedy `26/100`，train256 greedy `111/256 = 43.36%`；
+  full100 sampled audit strict `pass@8=46/100`、solved samples `177/800`。
+  结论：相对 balanced SFT 的 full100 greedy `23/100` 只有小幅提升，但
+  strict pass@8 只从 `45/100` 到 `46/100`，主要失败仍是 `wrong_value`，
+  不是截断或格式问题。注意旧 `summary.pass_at_k=87/100` 是 target-distance
+  reward 非零口径，不能当 strict solve pass@8。
+- 文档：`docs/handoff/handoff3.md`、
+  `docs/experiments/countdown_transfer_eval_20260619.md`、
+  `docs/experiments/countdown_adaptation_plan_20260619.md`、
+  `docs/experiments/countdown_handoff3_grpo_20260620.md`。
+
 ## 当前已验证状态
 
 - SFT v2 final eval：validation `42/136 = 30.88%`，format/valid expression 均为 `100%`。
@@ -197,6 +250,56 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 - Long eval observability fix: `generate_checkpoint_outputs` now appends raw
   outputs per batch and prints `generated x/y records`, so future long-token
   evaluations can be monitored while running.
+- Handoff3 Countdown target-alignment GRPO negative result:
+  based on Countdown curriculum SFT, two GRPO attempts were run on AutoDL.
+  `target_alignment` reward (`+1/-1`, 400 steps, 51 mixed prompts) reached
+  balanced16 `0/16` and train128 `56/128`. `target_distance` reward
+  (distance shaping, 800 steps, 177 reward-variance prompts) reached balanced16
+  `0/16` and train128 `57/128`. Both kept `format_ok=100%` and failed primarily
+  as `wrong_value`; raw outputs show the model computes a value not equal to
+  `Target:` and still submits it. Detailed record:
+  `docs/experiments/countdown_grpo_alignment_20260620.md`.
+- Handoff3 final-chance broad-solvable SFT completed on AutoDL:
+  `scripts/experiments/run_countdown_final_chance_fast.sh` built 20000 unique
+  solvable Countdown SFT records with eval full100 excluded, then continued
+  from balanced low-solution SFT for 6000 steps (`lr=1e-5`, `max_length=1024`).
+  The run finished end-to-end and produced checkpoints 1500/3000/4500/6000,
+  full100 greedy eval, and G8 sampled audit under
+  `outputs/experiments/handoff3_countdown_final_chance_fast`.
+  Checkpoint sweep was `15/100`, `19/100`, `16/100`, `19/100`, final `19/100`;
+  sampled audit was strict pass@8 `43/100` with 137/800 solved outputs.
+  This is worse than balanced SFT `23/100` and target-distance GRPO `26/100`.
+  Conclusion: simply adding broad solvable unique puzzles dilutes the low-solution
+  eval distribution and is not a useful continuation route. Handoff summary:
+  `docs/handoff/handoff3.md`; detailed record:
+  `docs/experiments/countdown_handoff3_grpo_20260620.md`.
+- Handoff3 minimal-transfer audit supersedes the old target-aware prompt route
+  as the current evidence source. Updated records:
+  `docs/experiments/countdown_handoff3_sft_baseline_20260620.md`,
+  `docs/experiments/countdown_transfer_eval_20260619.md`, and
+  `docs/handoff/handoff3.md`.
+- Handoff3 target-replacement SFT finished:
+  `outputs/experiments/handoff3_countdown_sft/sft_handoff2_target_replacement_20000_2400steps/final`.
+  It trained from handoff2 on 20000 solver traces, `max_steps=2400`,
+  `lr=1e-5`, `max_length=4096`, prompt = target replacement with bare-number
+  user input, completion = solver trace + `<answer>` without `Check:`.
+  Full100 greedy eval reached `5/100`, `format_ok=100/100`, `valid_expr=98/100`;
+  failures were mostly `wrong_value=93`. Full100 sampled audit `G=8` reached
+  `31/800` solved outputs, `pass@8=13/100`, `mixed_groups=13`,
+  `all_wrong_groups=87`, mean length `90.84`, p95 length `113`. This is better
+  than handoff2 zero-shot but still weak for direct GRPO long training.
+- Handoff3 balanced low-solution SFT finished:
+  `outputs/experiments/handoff3_countdown_balanced_sft/sft_from_target_replacement_balanced_low_solution_20000_2400steps/final`.
+  It continued from the target-replacement SFT final on 20000 additional solver
+  traces balanced across solution-count buckets `1/2/3/4` with `5000` records
+  each, still using `qwen_chat_minimal_target`, bare-number user input,
+  `max_steps=2400`, `lr=1e-5`, and `max_length=4096`. Full100 greedy eval
+  reached `23/100`, `format_ok=100/100`, `valid_expr=98/100`; failures were
+  mostly `wrong_value=75`. Full100 sampled audit `G=8` reached `134/800`
+  solved outputs, `pass@8=45/100`, `mixed_groups=42`, `all_wrong_groups=55`,
+  mean length `88.84`, p95 length `112`. This validates the balanced SFT
+  direction and provides enough sampled positive signal for a conservative
+  GRPO probe, though it is not yet a final-quality Countdown result.
 
 ## 仍损坏或未验证
 
@@ -216,7 +319,8 @@ strict greedy `110/136 = 80.88%` 推到 `90%+`，即至少 `123/136`。本轮已
 - 归档状态：旧 `0002-sft-training-readiness` 和 `20260615-sft-audit-and-repair` 计划已移到 `plans/archive/`。
 - 临时工件：`data/processed/` 和 `outputs/` 是 ignored runtime artifacts，不应提交。
 - 训练状态：AutoDL 当前无 running train/eval/audit command；最近一次 GPU 检查为
-  `0%` utilization、`0 MiB / 49140 MiB` after SFT 4096 baseline eval completed.
+  `0%` utilization、`0 MiB / 49140 MiB` after balanced low-solution SFT eval
+  completed.
 
 ## 下一步最佳动作
 
@@ -226,6 +330,14 @@ refresh、当前 close-bonus/closure-strict profile 或 hard-pool second-stage c
 verifier-rerank 是更强但不同口径的 inference-time search-selection 结果。若继续研究 greedy 提升，下一步应改变
 目标本身：更明确的停止/闭合策略、训练时 EOS/answer closure 建模，或把长 token/采样
 成功轨迹蒸馏为更短 direct greedy 输出，而不是简单加 step/LR/beta。
+
+Countdown handoff3 当前已经从 zero-shot `0%` 推进到 balanced SFT greedy
+`23/100`、sampled `pass@8=45/100`。旧 `qwen_chat_target` 路线已判定不是
+最小迁移；新 `qwen_chat_minimal_target` 路线下，target-replacement SFT 先修复
+格式/闭合，balanced low-solution SFT 显著提高了低解数题表现。当前主要失败是
+`wrong_value`，不是 answer closure。下一步可以从 balanced SFT final 开始做一轮
+保守 GRPO probe；reward 应把 strict success 作为主信号，避免为了 target-distance
+或长度 shaping 破坏已稳定的输出格式。
 
 ## 命令
 

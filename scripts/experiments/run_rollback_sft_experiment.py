@@ -121,8 +121,21 @@ def build_dataset(args: argparse.Namespace) -> None:
     records = []
     seen: set[tuple[str, str]] = set()
     split_records = list(manifest["splits"][args.split])
-    for record in split_records:
+    for record_index, record in enumerate(split_records, start=1):
         base_numbers = list(record["numbers"])
+        print(
+            json.dumps(
+                {
+                    "build_event": "puzzle_start",
+                    "puzzle_index": record_index,
+                    "total_puzzles": len(split_records),
+                    "numbers": base_numbers,
+                    "records": len(records),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
         for sample_index in range(args.samples_per_puzzle):
             prompt_numbers = list(base_numbers)
             rng.shuffle(prompt_numbers)
@@ -175,6 +188,18 @@ def build_dataset(args: argparse.Namespace) -> None:
                 break
         if args.max_records and len(records) >= args.max_records:
             break
+        print(
+            json.dumps(
+                {
+                    "build_event": "puzzle_done",
+                    "puzzle_index": record_index,
+                    "total_puzzles": len(split_records),
+                    "records": len(records),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
 
     with output_path.open("w", encoding="utf-8") as file:
         for item in records:

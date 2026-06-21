@@ -14,8 +14,16 @@ from game24_rl.verifier import verify_answer
 PROMPT_STYLE_PLAIN = "plain"
 PROMPT_STYLE_QWEN_CHAT = "qwen_chat"
 PROMPT_STYLE_QWEN_CHAT_SEARCH = "qwen_chat_search_v1"
+PROMPT_STYLE_QWEN_CHAT_TARGET = "qwen_chat_target"
+PROMPT_STYLE_QWEN_CHAT_MINIMAL_TARGET = "qwen_chat_minimal_target"
 SUPPORTED_PROMPT_STYLES = frozenset(
-    {PROMPT_STYLE_PLAIN, PROMPT_STYLE_QWEN_CHAT, PROMPT_STYLE_QWEN_CHAT_SEARCH}
+    {
+        PROMPT_STYLE_PLAIN,
+        PROMPT_STYLE_QWEN_CHAT,
+        PROMPT_STYLE_QWEN_CHAT_SEARCH,
+        PROMPT_STYLE_QWEN_CHAT_TARGET,
+        PROMPT_STYLE_QWEN_CHAT_MINIMAL_TARGET,
+    }
 )
 
 TRACE_TYPE_SHORT_SUCCESS = "short_success"
@@ -47,13 +55,35 @@ _QWEN_CHAT_SEARCH_SYSTEM_PROMPT = (
     "<answer>((12 + 3) + (10 - 1))</answer>"
 )
 
+_QWEN_CHAT_TARGET_SYSTEM_PROMPT = (
+    "Solve arithmetic target puzzles. Given three or four numbers and a target, "
+    "reach the target using +, -, *, and /. Use each provided number exactly "
+    "once. Output concise reasoning steps. End with exactly one final expression "
+    "inside <answer>...</answer>."
+)
+
+
+def _qwen_chat_minimal_target_system_prompt(
+    *,
+    numbers_count: int,
+    target: int,
+) -> str:
+    number_word = "three" if numbers_count == 3 else "four"
+    return (
+        f"Play the {target}-point game. Given {number_word} numbers, reach "
+        f"{target} using +, -, *, and /, and use each provided number exactly "
+        "once. Output concise reasoning steps. End with exactly one final "
+        "expression inside <answer>...</answer>."
+    )
+
 
 def format_prompt(
     numbers: Sequence[int],
     *,
+    target: int = DEFAULT_TARGET,
     prompt_style: str = PROMPT_STYLE_PLAIN,
 ) -> str:
-    """Formats the SFT prompt for one standard 24-point puzzle."""
+    """Formats the prompt for one arithmetic target puzzle."""
 
     _validate_prompt_style(prompt_style)
     joined = " ".join(str(number) for number in numbers)
@@ -67,6 +97,22 @@ def format_prompt(
         return (
             f"<|im_start|>system\n{_QWEN_CHAT_SEARCH_SYSTEM_PROMPT}<|im_end|>\n"
             f"<|im_start|>user\nInput numbers: {joined}\n<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+    if prompt_style == PROMPT_STYLE_QWEN_CHAT_TARGET:
+        return (
+            f"<|im_start|>system\n{_QWEN_CHAT_TARGET_SYSTEM_PROMPT}<|im_end|>\n"
+            f"<|im_start|>user\nNumbers: {joined}\nTarget: {target}\n<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+    if prompt_style == PROMPT_STYLE_QWEN_CHAT_MINIMAL_TARGET:
+        system_prompt = _qwen_chat_minimal_target_system_prompt(
+            numbers_count=len(numbers),
+            target=target,
+        )
+        return (
+            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{joined}\n<|im_end|>\n"
             "<|im_start|>assistant\n"
         )
     return (
@@ -142,6 +188,7 @@ def build_sft_records(
                     "target": target,
                     "prompt": format_prompt(
                         solution.numbers,
+                        target=target,
                         prompt_style=prompt_style,
                     ),
                     "completion": completion,

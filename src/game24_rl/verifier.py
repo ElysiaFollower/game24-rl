@@ -8,7 +8,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
-from game24_rl.solver import DEFAULT_TARGET, normalize_puzzle
+from game24_rl.countdown_solver import normalize_countdown_numbers
+from game24_rl.solver import DEFAULT_TARGET
 
 ANSWER_PATTERN = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL)
 VERIFIER_VERSION = "strict-ast-fraction-v1"
@@ -81,9 +82,9 @@ def verify_answer(
     puzzle: Sequence[int],
     target: int | Fraction = DEFAULT_TARGET,
 ) -> VerificationResult:
-    """Verifies a model answer against one 24-point puzzle."""
+    """Verifies a model answer against one arithmetic target puzzle."""
 
-    expected_numbers = normalize_puzzle(puzzle)
+    expected_numbers = normalize_countdown_numbers(puzzle)
     try:
         expression = extract_answer_expression(output)
     except ValueError as exc:

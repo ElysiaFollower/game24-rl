@@ -6,6 +6,12 @@
 > `Qwen2.5-1.5B-Instruct -> full SFT final -> GRPO LoRA adapter -> decoding/eval`。
 > 这批结果主要说明：SFT 已经很强，GRPO 有信号，token budget 对最终分数影响很大。
 
+Hugging Face 留档：
+
+- SFT-final：<https://huggingface.co/Prometheus17/game24-rl/tree/main/sft-final>
+- handoff1 GRPO LoRA：<https://huggingface.co/Prometheus17/game24-rl/tree/main/grpo-lora-final>
+- 仓库总览：<https://huggingface.co/Prometheus17/game24-rl/tree/main>
+
 ## 先说数据集
 
 题目里提到两个数据集：`nlile/24-game` 和

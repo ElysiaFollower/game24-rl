@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from game24_rl.data_gen import PROMPT_STYLE_QWEN_CHAT, format_prompt
 from game24_rl.datasets import read_manifest
-from game24_rl.rewards import GRPO_REWARD_VERSION, reward_completions
+from game24_rl.rewards import score_completion
 
 GRPO_POOL_SCHEMA_VERSION = "game24-grpo-pool-v1"
 GRPO_PROBE_SCHEMA_VERSION = "game24-grpo-compat-probe-v1"
@@ -91,8 +91,8 @@ def audit_rollout_groups(
         rewards = [float(item.get("reward", 0.0)) for item in group]
         positive = sum(reward > 0 for reward in rewards)
         has_correct = positive > 0
-        has_wrong = positive < len(rewards)
-        if has_correct and has_wrong:
+        has_reward_variance = min(rewards) != max(rewards)
+        if has_reward_variance:
             mixed += 1
             selected_prompt_ids.append(prompt_id)
         if positive == len(rewards):
@@ -103,7 +103,7 @@ def audit_rollout_groups(
         if has_correct and reasons[TRUNCATION_REASON] > 0:
             correct_truncation_mixed += 1
 
-    zero_std = all_correct + all_wrong
+    zero_std = total_prompts - mixed
     mixed_rate = _safe_rate(mixed, total_prompts)
     zero_std_rate = _safe_rate(zero_std, total_prompts)
     all_wrong_rate = _safe_rate(all_wrong, total_prompts)
@@ -226,7 +226,11 @@ def build_prompt_dataset(
             "id": record["id"],
             "numbers": record["numbers"],
             "target": record.get("target", manifest.get("target", 24)),
-            "prompt": format_prompt(record["numbers"], prompt_style=prompt_style),
+            "prompt": _format_prompt_compat(
+                record["numbers"],
+                target=record.get("target", manifest.get("target", 24)),
+                prompt_style=prompt_style,
+            ),
         }
         for record in records
     ]
@@ -238,6 +242,7 @@ def run_grpo_dry_run(
     split: str = "train",
     output_dir: str | Path,
     prompt_style: str = PROMPT_STYLE_QWEN_CHAT,
+    reward_profile: str = "strict",
     limit: int = 8,
 ) -> dict[str, Any]:
     """Writes prompt-only GRPO dry-run artifacts without loading model weights."""
@@ -251,15 +256,18 @@ def run_grpo_dry_run(
         limit=limit,
     )
     sample_completions = [
-        "<answer>((8 - 2) * (7 - 3))</answer>",
+        "<answer>((8-2)*(7-3))</answer>",
         "<think>still searching",
     ]
-    sample_rewards = reward_completions(
-        completions=sample_completions,
-        numbers=[[8, 2, 7, 3], [8, 2, 7, 3]],
-        target=[24, 24],
-        id=["dry-run-ok", "dry-run-missing"],
-    )
+    sample_scores = [
+        score_completion(
+            completion,
+            numbers=[8, 2, 7, 3],
+            target=24,
+            reward_profile=reward_profile,
+        )
+        for completion in sample_completions
+    ]
     prompts_path = output_path / f"{split}-prompts.jsonl"
     with prompts_path.open("w", encoding="utf-8") as file:
         for record in prompt_records:
@@ -272,8 +280,9 @@ def run_grpo_dry_run(
         "prompt_style": prompt_style,
         "prompt_records": len(prompt_records),
         "prompts_path": str(prompts_path),
-        "reward_version": GRPO_REWARD_VERSION,
-        "sample_rewards": sample_rewards,
+        "reward_profile": reward_profile,
+        "reward_version": sample_scores[0].reward_version,
+        "sample_rewards": [score.reward for score in sample_scores],
         "loads_model_weights": False,
     }
     metadata_path = output_path / "dry-run-metadata.json"
@@ -370,3 +379,19 @@ def _safe_rate(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 0.0
     return numerator / denominator
+
+
+def _format_prompt_compat(
+    numbers: list[int],
+    *,
+    target: int,
+    prompt_style: str,
+) -> str:
+    """Formats prompts across old and target-aware data_gen implementations."""
+
+    try:
+        return format_prompt(numbers, target=target, prompt_style=prompt_style)
+    except TypeError as exc:
+        if "target" not in str(exc):
+            raise
+        return format_prompt(numbers, prompt_style=prompt_style)
