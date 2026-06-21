@@ -1,31 +1,31 @@
-# Handoff3 Start Point: Countdown Transfer
+# 给队友的简短交接：Countdown 迁移实验
 
-## 当前目标
+一句话版：
 
-handoff3 阶段只做一件事：
+> handoff3 做的是加分项：把 handoff2 的 24 点 GRPO 模型迁移到
+> `Jiayi-Pan/Countdown-Tasks-3to4`，也就是“给定 3-4 个数，凑任意 target”。
+> 我们用最小迁移 prompt、SFT、balanced SFT 和 GRPO 都试过了。最好 direct greedy
+> 结果是 `26/100 = 26%`。这个结果不够强，但实验链路和失败原因是清楚的：
+> 格式基本学会了，主要错在表达式值不等于 target。
 
-> 基于 handoff2 交付的 GRPO 模型，在
-> `Jiayi-Pan/Countdown-Tasks-3to4` 上做“给定 3-4 个数，凑任意 target”的迁移实验。
+## 这次实验接在 handoff2 后面
 
-如果 zero-shot / direct eval 不够好，再考虑继续做强化学习后训练。
-
-## 基座模型
-
-本阶段从 handoff2 GRPO 模型出发：
+handoff2 交付的是 24 点 GRPO 模型：
 
 ```text
 outputs/experiments/handoff1_grpo_closure_control_smooth_v1_2000/train/checkpoint-500
 ```
 
-Hugging Face 对应目录：
+Hugging Face 留档：
 
 ```text
 https://huggingface.co/Prometheus17/game24-rl/tree/main/handoff2-grpo-checkpoint-500
 ```
 
-它的上游是 handoff1 SFT-final，不是从 base model 直接训练出来的。
+handoff3 没有从原始 Qwen 重新训练，而是从这个 handoff2 模型出发，测试它能不能迁移到
+Countdown 任意 target 任务。
 
-## 数据口径
+## 数据和评估口径
 
 目标数据集：
 
@@ -33,11 +33,30 @@ https://huggingface.co/Prometheus17/game24-rl/tree/main/handoff2-grpo-checkpoint
 Jiayi-Pan/Countdown-Tasks-3to4
 ```
 
-本阶段只评估 / 训练 solvable 题目。不可解题不纳入主实验，否则无法区分模型能力不足和题目本身无解。
+这个数据集很大，所以本阶段没有全量评估，而是构建了一个 100 题的可复现 held-out
+评估集：
 
-## 为什么这个迁移是合理的
+```text
+outputs/experiments/handoff3_countdown_eval/countdown-stratified-eval-manifest.json
+```
 
-当前 Game24 模型的输入并不是完全裸四个数。训练和评估时，模型实际看到的是一个 chat prompt：
+构建逻辑：
+
+- 只保留 DFS 可解题；
+- 按唯一可行表达式数量分成 `1/2/3/4` 四组；
+- 每组 25 题，总计 100 题；
+- 训练数据排除这 100 题；
+- 评估使用 direct greedy，`max_new_tokens=4096`；
+- strict verifier 检查 `<answer>...</answer>` 中的表达式是否只用输入数字并等于 target。
+
+这个 100 题集合偏难，因为它刻意选择低解数题；所以结果不能直接理解成 Countdown
+全量随机题准确率。
+
+## Prompt 选择
+
+最关键的工程判断是：不能换成全新的 `Numbers:` / `Target:` 输入格式。
+
+原 24 点 prompt 类似：
 
 ```text
 <|im_start|>system
@@ -48,12 +67,7 @@ Play the 24-point game. Given four numbers, reach 24 using +, -, *, and /, and u
 <|im_start|>assistant
 ```
 
-也就是说，目标 `24` 是通过 system prompt 明确告诉模型的；user 段只放数字。
-模型并不是只靠“看到四个数就默认做 24 点”。
-
-因此迁移到 Countdown 时，正确的最小迁移不是换成新的 `Numbers:` / `Target:`
-输入格式，而是尽量保持 handoff2 的 Game24 prompt 行为，只把目标数字从 `24`
-替换成 Countdown 的 `target`，user 段仍只放裸数字：
+Countdown 最小迁移 prompt 只替换目标数字，user 段仍然只放裸数字：
 
 ```text
 <|im_start|>system
@@ -64,318 +78,123 @@ Play the 50-point game. Given four numbers, reach 50 using +, -, *, and /, and u
 <|im_start|>assistant
 ```
 
-这个格式与原 Game24 prompt 的行为最接近：
-
-- system prompt 说明任务规则；
-- user prompt 只给数字；
-- assistant 输出 `<think>` 推理和唯一 `<answer>...</answer>` 表达式；
-- verifier 仍然检查表达式是否只使用给定数字并等于 target。
-
-对应仓库 prompt style：
+仓库里的 prompt style 是：
 
 ```text
 qwen_chat_minimal_target
 ```
 
-旧的 `qwen_chat_target` prompt 会引入新的 `Numbers:` / `Target:` 输入格式，
-同时前期 SFT 数据还使用了 `Check:` completion，改变了模型原本的搜索输出语义。
-这条旧路线的结果可以作为失败记录保留，但不能作为“最小迁移是否可行”的结论。
+旧的 `qwen_chat_target` 和 `Check:` completion 路线改变了输入/输出语义，已经废弃，只作为失败记录保留。
 
-## Eval 设计口径
+## 实验路线和结果
 
-本阶段不直接从 `Jiayi-Pan/Countdown-Tasks-3to4` 随机抽全量 eval。该数据集很大，
-直接全量评估成本不可控，因此先构建一个 100 题的可复现小评估集。
-
-构建脚本：
+核心路线是：
 
 ```text
-scripts/build_countdown_stratified_eval_manifest.py
+handoff2 GRPO -> minimal-transfer eval -> target-replacement SFT
+-> balanced low-solution SFT -> target-distance GRPO
 ```
 
-构建逻辑：
+结果表：
 
-- 使用 DFS 暴力搜索每道题的可行表达式数量；
-- 只保留 solvable 题目，0 条可行路径的题不进入主评估；
-- 使用 dataset 原始顺序做流式扫描，不先下载或扫描全量数据；
-- 按唯一可行表达式数量分层；
-- 当前目标分层为 `1/2/3/4` 条可行路径四组；
-- 每组 25 题，总计 100 题；
-- 当四组都凑满 25 题时立即停止扫描；
-- 如果某一组不够 25 题，脚本会失败并打印缺口，不会自动改口径。
+| stage | full100 greedy | sampled audit | 主要结论 |
+| --- | ---: | ---: | --- |
+| handoff2 zero-shot minimal transfer | `0/16` | `pass@4=0/8` | 会长搜索，但不闭合答案 |
+| target-replacement SFT | `5/100` | `pass@8=13/100` | 格式修复，求解仍弱 |
+| balanced low-solution SFT | `23/100` | `pass@8=45/100` | 当前最有效的 SFT 路线 |
+| target-distance GRPO | `26/100` | `pass@8=46/100` | 最好 direct greedy 结果 |
+| final broad-solvable SFT | `19/100` | `pass@8=43/100` | 扩大普通可解题覆盖反而退化 |
 
-旧 zero-shot 评估口径：
-
-- model base：`outputs/experiments/baseline_format_v2_full_5000_from800/final`
-- LoRA checkpoint：`outputs/experiments/handoff1_grpo_closure_control_smooth_v1_2000/train/checkpoint-500`
-- prompt style：`qwen_chat_target`
-- max_new_tokens：`4096`
-- batch_size：`4`
-- decoding：greedy
-
-过程性运行记录放在：
+最终可报告的最好 direct greedy 结果是：
 
 ```text
-docs/experiments/countdown_transfer_eval_20260619.md
-docs/experiments/countdown_handoff3_sft_baseline_20260620.md
+26/100 = 26%
 ```
 
-## 当前结果
-
-### Handoff2 minimal-transfer audit
-
-在 handoff2 GRPO 模型上，使用 `qwen_chat_minimal_target` 先跑了 16 题 greedy
-审计：
-
-```text
-outputs/experiments/handoff3_countdown_minimal/eval_handoff2_minimal_greedy16
-```
-
-| total | solved | solve_rate | format_ok | valid_expr | max_new_tokens |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 0 | 0.00% | 1 | 0 | 4096 |
-
-失败分布：
-
-| reason | count |
-| --- | ---: |
-| `answer_contract:expected exactly one <answer>...</answer> block` | 15 |
-| `wrong_numbers` | 1 |
-
-结论：最小迁移 prompt 恢复了 handoff2 的 rollback/search 行为，但 greedy
-仍不能直接完成 Countdown；主要失败是 4096 token 内没有闭合 `<answer>`。
-
-原计划跑 32 题、每题 8 采样、4096 token 的 sampled audit：
-
-```text
-outputs/experiments/handoff3_countdown_minimal/rollout_handoff2_minimal_32_g8
-```
-
-该审计运行 60 分钟仍无 summary，GPU 持续生成，说明当前模型在最小迁移 prompt
-下倾向于打满长搜索。为避免继续沉没成本，停止该审计，改跑小样本 8 题、每题
-4 采样、4096 token：
-
-```text
-outputs/experiments/handoff3_countdown_minimal/rollout_handoff2_minimal_8_g4
-```
-
-| prompts | samples / prompt | total outputs | solved | pass@4 | format_ok | valid_expr | len mean | len p50 | len p95 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 8 | 4 | 32 | 0 | 0/8 | 3 | 0 | 4096 | 4096 | 4096 |
-
-失败分布：
-
-| reason | count |
-| --- | ---: |
-| `answer_contract:expected exactly one <answer>...</answer> block` | 29 |
-| `wrong_numbers` | 3 |
-
-结论：handoff2 在最小迁移 prompt 下能恢复搜索形式，但当前采样空间里没有观察到
-正确轨迹，并且所有样本都打满 4096 token。直接从 handoff2 对 Countdown 做 GRPO
-缺少正样本信号，风险很高。下一步更合理的是先用最小迁移 prompt 重新构建
-Countdown SFT 数据，让模型学会“目标数可变但搜索/输出格式不变”，再重新做
-sampled audit 和 GRPO。
-
-起步阶段的完整实验过程记录：
-
-```text
-docs/experiments/countdown_handoff3_sft_baseline_20260620.md
-```
-
-### Handoff3 target-replacement SFT
-
-按最小迁移口径完成一轮 SFT：
-
-```text
-outputs/experiments/handoff3_countdown_sft/sft_handoff2_target_replacement_20000_2400steps/final
-```
-
-训练口径：
-
-| item | value |
-| --- | --- |
-| start | handoff2 GRPO checkpoint-500 |
-| train records | 20000 |
-| max_steps | 2400 |
-| learning_rate | `1e-5` |
-| max_length | 4096 |
-| prompt | target 替换，user 裸数字 |
-| completion | solver trace + `<answer>` |
-
-Full100 greedy eval：
-
-| total | solved | solve_rate | format_ok | valid_expr | main failure |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| 100 | 5 | 5.00% | 100 | 98 | `wrong_value=93` |
-
-Full100 sampled audit：
-
-| prompts | samples / prompt | solved outputs | pass@8 | mixed groups | all-wrong groups |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 8 | 31/800 | 13/100 | 13 | 87 |
-
-结论：这轮 SFT 基本修复了格式和闭合问题，但训练数据中 `5_plus` 容易题占比过高，
-与当前 full100 eval 的 `1/2/3/4` 低解数分布不匹配，导致求解率仍低。
-
-### Handoff3 balanced low-solution SFT
-
-随后按 eval 难度分布追加 balanced low-solution SFT：
-
-```text
-outputs/experiments/handoff3_countdown_balanced_sft/sft_from_target_replacement_balanced_low_solution_20000_2400steps/final
-```
-
-训练口径：
-
-| item | value |
-| --- | --- |
-| start | target-replacement SFT final |
-| train records | 20000 |
-| bucket quotas | `1=5000, 2=5000, 3=5000, 4=5000` |
-| max_steps | 2400 |
-| learning_rate | `1e-5` |
-| max_length | 4096 |
-| prompt | target 替换，user 裸数字 |
-| completion | solver trace + `<answer>` |
-
-Full100 greedy eval：
-
-| total | solved | solve_rate | format_ok | valid_expr | main failure |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| 100 | 23 | 23.00% | 100 | 98 | `wrong_value=75` |
-
-Full100 sampled audit：
-
-| prompts | samples / prompt | solved outputs | pass@8 | mixed groups | all-wrong groups | len mean | len p95 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 8 | 134/800 | 45/100 | 42 | 55 | 88.84 | 112 |
-
-对比：
-
-| metric | target-replacement SFT | balanced low-solution SFT |
-| --- | ---: | ---: |
-| greedy solve | `5/100` | `23/100` |
-| sampled solved outputs | `31/800` | `134/800` |
-| pass@8 | `13/100` | `45/100` |
-| mixed groups | `13` | `42` |
-
-结论：balanced low-solution SFT 是当前 handoff3 的有效路线。它还不是最终结果，
-但已经把问题从“格式/闭合失败”推进到“表达式值不等于 target”，并且 sampled
-distribution 中已有足够正确轨迹，下一步可以从该 checkpoint 做一轮保守 GRPO
-probe。
-
-### Target-distance GRPO probe
-
-在 balanced low-solution SFT 基础上做了一轮 target-distance GRPO：
+对应 checkpoint：
 
 ```text
 outputs/experiments/handoff3_countdown_balanced_grpo_probe/grpo_targetdistance_from_balanced_sft_train256_g8_lr1e6_beta001_1200/final
 ```
 
-结果：
-
-| metric | balanced SFT | GRPO target-distance |
-| --- | ---: | ---: |
-| held-out full100 greedy | `23/100` | `26/100` |
-| held-out full100 solved samples | `134/800` | `177/800` |
-| held-out full100 strict pass@8 | `45/100` | `46/100` |
-| held-out full100 valid_expr | `98/100` | `96/100` |
-
-结论：GRPO 有小幅 greedy 提升，但没有把 `pass@8` 有效转成 greedy direct
-accuracy。主要失败仍是 `wrong_value`。旧 `pass_at_k=87/100` 是
-target-distance reward 非零口径，不是 strict solve pass@8。
-
-详细记录：
+对应结果文档：
 
 ```text
 docs/experiments/countdown_handoff3_grpo_20260620.md
 ```
 
-### Final chance broad-solvable SFT
+## 怎么解释这个结果
 
-针对 balanced low-solution SFT 的一个关键缺口，追加最后一次训练：此前
-`countdown-balanced-low-solution-sft-20000.jsonl` 是按 records 配额构建，
-每题多 trace，unique puzzle 覆盖明显小于 20000；而 Countdown 的 target/number
-空间远大于 24 点，低 unique 覆盖可能是泛化差的重要原因。
+这条迁移没有达到我们一开始希望的效果。比较稳的解释是：
 
-因此最后一次尝试不再继续加 GRPO，而是从 balanced low-solution SFT final 继续，
-使用 20000 道唯一可解 Countdown 题构建 fast broad-solvable SFT 数据。构建时只
-搜索每题第一条解，不做完整解数统计；排除当前 full100 eval manifest，保持
-held-out 评估不泄漏。
+> handoff2 的 24 点模型确实学到了搜索格式和一部分算式组合能力，但“固定 target=24”
+> 到“任意 target”的迁移并不只是替换一个数字。模型很容易生成格式正确、数字也基本正确、
+> 但表达式值不等于 target 的答案。
 
-脚本：
+target-replacement SFT 之后，格式问题基本解决：
 
-```text
-scripts/experiments/run_countdown_final_chance_fast.sh
-```
+- `format_ok` 基本达到 `100/100`；
+- 输出能稳定闭合 `<answer>`；
+- 主要失败从 no-answer 变成 `wrong_value`。
 
-运行目录：
+这说明训练不是完全无效。问题从“不会按格式完成任务”推进到了“会提交错误值的表达式”。
 
-```text
-outputs/experiments/handoff3_countdown_final_chance_fast
-```
+## 典型错误
 
-训练口径：
-
-| item | value |
-| --- | --- |
-| start base | `outputs/experiments/baseline_format_v2_full_5000_from800/final` |
-| initial adapter | balanced low-solution SFT final |
-| train records | 20000 unique solvable puzzles |
-| excluded eval | `countdown-stratified-eval-manifest.json` full100 |
-| max_steps | 6000 |
-| learning_rate | `1e-5` |
-| max_length | 1024 |
-| eval | full100 greedy, `max_new_tokens=4096` |
-| sampled audit | full100 `G=8`, `max_new_tokens=4096` |
-
-结果：
-
-| checkpoint | solved | solve_rate | format_ok | valid_expr |
-| --- | ---: | ---: | ---: | ---: |
-| `checkpoint-1500` | 15/100 | 15.00% | 100 | 94 |
-| `checkpoint-3000` | 19/100 | 19.00% | 100 | 92 |
-| `checkpoint-4500` | 16/100 | 16.00% | 100 | 94 |
-| `checkpoint-6000` / `final` | 19/100 | 19.00% | 100 | 94 |
-
-Final sampled audit：
-
-| prompts | samples / prompt | solved outputs | strict pass@8 | strict mixed | all-correct | all-wrong | len mean | len p95 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 8 | 137/800 | 43/100 | 39 | 4 | 57 | 92.45 | 118 |
-
-Failure mix：
-
-| reason | count |
-| --- | ---: |
-| `wrong_value` | 599 |
-| `wrong_numbers` | 59 |
-| `syntax_error:'(' was never closed` | 3 |
-| `syntax_error:unmatched ')'` | 1 |
-| `unsupported_expression:UnaryOp` | 1 |
-| `ok` | 137 |
-
-结论：broad-solvable SFT 没有提升 held-out full100，反而低于 balanced SFT
-`23/100` 和 target-distance GRPO `26/100`。这说明当前 100 题低解数 eval 对
-训练分布很敏感；简单增加普通 solvable unique puzzles 会稀释难度分布，不能作为
-继续烧算力的方向。
-
-### 旧 target-aware 路线
-
-以下旧实验使用 `qwen_chat_target` prompt 或 `Check:` completion，不是当前认可的
-最小迁移口径，只作为失败记录保留：
-
-| route | result |
-| --- | --- |
-| old zero-shot full100 | `0/100` |
-| old SFT-2000-600 sampled audit | `pass@8=1/16` |
-| old curriculum SFT full100 | `4/100` |
-| old GRPO target_alignment | balanced16 `0/16`, train128 `56/128` |
-| old GRPO target_distance | balanced16 `0/16`, train128 `57/128` |
-
-旧路线的详细记录：
+题目：
 
 ```text
-docs/experiments/countdown_transfer_eval_20260619.md
-docs/experiments/countdown_adaptation_plan_20260619.md
-docs/experiments/countdown_grpo_alignment_20260620.md
+target = 50
+numbers = 74 5 20 88
 ```
+
+模型输出：
+
+```text
+<think>
+(74) - (5) = 69, left: 69, 20, 88
+(20) - (69) = -49, left: -49, 88
+(-49) + (88) = 39, left: 39
+</think>
+<answer>((20 - (74 - 5)) + 88)</answer>
+```
+
+verifier：
+
+```text
+reason = wrong_value
+value = 39
+target = 50
+```
+
+也就是说，它不是没有输出，也不是 verifier 错了，而是模型把一个不等于 target 的表达式当答案提交了。
+
+## 为什么最后不继续训了
+
+我们最后还试了一次 broad-solvable SFT：用 20000 道唯一可解 Countdown 题继续训练。
+结果从 `26/100` 退到 `19/100`。
+
+这说明简单增加普通可解题覆盖不是有效方向。当前 held-out full100 是低解数难题，
+训练分布一旦变宽，反而会稀释这类题的信号。
+
+所以 handoff3 最合理的交付说法是：
+
+> Countdown 迁移作为加分项完成了系统实验，但结果有限。最好 direct greedy 准确率为
+> `26/100 = 26%`。失败主要是 `wrong_value`，不是格式崩溃或答案不闭合。后续若继续做，
+> 应重新设计 target-aware 数据和 verifier-guided 训练信号，而不是继续盲目扩大 SFT 或 GRPO 步数。
+
+## 留档位置
+
+建议阅读顺序：
+
+1. `docs/handoff/handoff2.md`
+   先看 handoff3 的起点模型是什么。
+
+2. `docs/experiments/countdown_handoff3_sft_baseline_20260620.md`
+   看 minimal-transfer prompt、SFT 和 balanced SFT 的结果。
+
+3. `docs/experiments/countdown_handoff3_grpo_20260620.md`
+   看 target-distance GRPO、final broad-solvable SFT 和最终结论。
+
+4. `docs/experiments/countdown_transfer_eval_20260619.md`
+   只作为旧 prompt 路线的失败记录，不作为当前主结论。
